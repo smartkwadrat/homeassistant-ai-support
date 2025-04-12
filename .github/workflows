@@ -1,0 +1,31 @@
+name: Create Release ZIP
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout repo
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Zip custom_components folder
+      - name: Create ZIP file
+        run: |
+          mkdir -p release
+          cp -r custom_components/homeassistant_ai_support release/
+          cd release
+          zip -r homeassistant_ai_support.zip homeassistant_ai_support
+
+      # Upload ZIP to release assets
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: release/homeassistant_ai_support.zip
+          asset_name: homeassistant_ai_support.zip
+          asset_content_type: application/zip
