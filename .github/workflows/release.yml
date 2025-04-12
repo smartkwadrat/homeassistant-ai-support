@@ -21,6 +21,8 @@ jobs:
 
       - name: Upload Release Asset
         uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
           asset_path: release/homeassistant_ai_support.zip
