@@ -1,42 +1,38 @@
-"""Handles communication with OpenAI API."""
+"""Obsługa API OpenAI dla integracji Home Assistant AI Support."""
 from __future__ import annotations
 
 import logging
 from typing import Any
 
-from openai import APIError, AsyncOpenAI, RateLimitError
-
+from openai import AsyncOpenAI, APIError, RateLimitError
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.httpx_client import get_async_client
-
-from .const import DEFAULT_MODEL
 
 _LOGGER = logging.getLogger(__name__)
 
 class OpenAIAnalyzer:
-    """Class to handle OpenAI API communication."""
-
+    """Klasa do komunikacji z API OpenAI."""
+    
     def __init__(
         self,
         hass: HomeAssistant,
         api_key: str,
-        model: str = DEFAULT_MODEL,
+        model: str = "gpt-4o",
         max_tokens: int = 2000,
         temperature: float = 0.3
-    ) -> None:
-        """Initialize OpenAI handler."""
+    ):
+        """Inicjalizacja klienta OpenAI."""
         self.hass = hass
-        self.model = model
-        self.max_tokens = max_tokens
-        self.temperature = temperature
-        
         self.client = AsyncOpenAI(
             api_key=api_key,
             http_client=get_async_client(self.hass)
         )
+        self.model = model
+        self.max_tokens = max_tokens
+        self.temperature = temperature
 
     async def analyze_logs(self, logs: str) -> str | None:
-        """Analyze logs using OpenAI API."""
+        """Analiza logów przez OpenAI."""
         system_prompt = (
             "Jesteś ekspertem od analizy logów systemowych Home Assistant. "
             "Przeanalizuj poniższe logi i przygotuj zwięzły raport w języku polskim, "
@@ -56,13 +52,13 @@ class OpenAIAnalyzer:
             return response.choices[0].message.content
         
         except RateLimitError as err:
-            _LOGGER.error("Limit zapytań do API przekroczony: %s", err)
+            _LOGGER.error("Limit zapytań przekroczony: %s", err)
             return None
             
         except APIError as err:
             _LOGGER.error("Błąd API OpenAI: %s", err)
             return None
             
-        except Exception as err:
-            _LOGGER.exception("Nieoczekiwany błąd podczas analizy logów: %s", err)
+        except Exception as err:  # pylint: disable=broad-except
+            _LOGGER.exception("Nieoczekiwany błąd: %s", err)
             return None

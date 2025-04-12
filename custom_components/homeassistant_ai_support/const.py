@@ -1,0 +1,1 @@
+DOMAIN = "homeassistant_ai_support"
