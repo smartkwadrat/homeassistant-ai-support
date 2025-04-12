@@ -1,0 +1,34 @@
+{
+    "config": {
+      "step": {
+        "user": {
+          "title": "Konfiguracja Wsparcia AI",
+          "description": "Skonfiguruj integrację do analizy logów przy użyciu ChatGPT",
+          "data": {
+            "api_key": "Klucz API OpenAI",
+            "scan_interval": "Interwał analizy (w godzinach)"
+          }
+        }
+      },
+      "error": {
+        "invalid_api_key": "Nieprawidłowy format klucza API (powinien zaczynać się od 'sk-' i mieć co najmniej 32 znaki)",
+        "connection": "Błąd połączenia z API OpenAI",
+        "unknown": "Nieznany błąd"
+      }
+    },
+    "options": {
+      "step": {
+        "init": {
+          "data": {
+            "scan_interval": "Interwał analizy (w godzinach)",
+            "model": "Model"
+          }
+        }
+      }
+    },
+    "state": {
+      "error": "Błąd",
+      "ok": "Gotowe"
+    }
+  }
+  
