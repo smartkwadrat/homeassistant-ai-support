@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from openai import APIError, AuthenticationError, AsyncOpenAI, DefaultAsyncHttpxClient
+from openai import APIError, AuthenticationError, AsyncOpenAI
 import voluptuous as vol
 
 from homeassistant import config_entries
@@ -26,10 +26,7 @@ _LOGGER = logging.getLogger(__name__)
 async def validate_api_key(hass: HomeAssistant, api_key: str) -> None:
     """Validate OpenAI API key."""
     try:
-        client = AsyncOpenAI(
-            api_key=api_key,
-            http_client=DefaultAsyncHttpxClient()
-        )
+        client = AsyncOpenAI(api_key=api_key)
         await client.models.list()
     except AuthenticationError as err:
         _LOGGER.error("Authentication failed: %s", err)
@@ -55,7 +52,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             api_key = user_input[CONF_API_KEY]
             
-            # Walidacja formatu klucza
             if not api_key.startswith("sk-") or len(api_key) < 32:
                 errors["base"] = "invalid_api_key"
             else:
@@ -86,7 +82,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Optional(
                 CONF_MODEL,
                 default=DEFAULT_MODEL
-            ): vol.In(["gpt-4o", "gpt-4-turbo", "gpt-4"]),
+            ): str,
         })
 
         return self.async_show_form(
@@ -97,9 +93,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
-    def async_get_options_flow(
-        config_entry: ConfigEntry,
-    ) -> OptionsFlowHandler:
+    def async_get_options_flow(config_entry: ConfigEntry):
         """Get the options flow."""
         return OptionsFlowHandler(config_entry)
 
@@ -110,9 +104,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         """Initialize options flow."""
         self.config_entry = config_entry
 
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    async def async_step_init(self, user_input: dict[str, Any] | None = None):
         """Manage the options."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
@@ -129,6 +121,6 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_MODEL,
                     default=self.config_entry.data.get(CONF_MODEL, DEFAULT_MODEL)
-                ): vol.In(["gpt-4o", "gpt-4-turbo", "gpt-4"]),
+                ): str,
             })
         )
