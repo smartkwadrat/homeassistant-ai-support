@@ -40,8 +40,8 @@ jobs:
           git commit -m "Update version to $VERSION"
           git push origin main
 
-      # Krok 4: Utwórz plik ZIP
-      - name: Create ZIP archive
+      # Krok 4: Tworzenie pliku ZIP
+      - name: Create ZIP file
         run: |
           mkdir -p release
           cd custom_components

@@ -3,5 +3,4 @@
     "homeassistant": "2025.1.0",
     "render_readme": true,
     "zip_release": true,
-    "filename": "homeassistant_ai_support.zip"
-  }  
+}  
