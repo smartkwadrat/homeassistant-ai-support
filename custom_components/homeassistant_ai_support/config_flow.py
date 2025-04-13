@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from openai import APIError, AuthenticationError, AsyncOpenAI
+from openai import APIError, AuthenticationError, AsyncOpenAI, DefaultAsyncHttpxClient
 import voluptuous as vol
 
 from homeassistant import config_entries
@@ -26,7 +26,10 @@ _LOGGER = logging.getLogger(__name__)
 async def validate_api_key(hass: HomeAssistant, api_key: str) -> None:
     """Validate OpenAI API key."""
     try:
-        client = AsyncOpenAI(api_key=api_key)
+        client = AsyncOpenAI(
+            api_key=api_key,
+            http_client=DefaultAsyncHttpxClient()
+        )
         await client.models.list()
     except AuthenticationError as err:
         _LOGGER.error("Authentication failed: %s", err)
@@ -41,7 +44,7 @@ async def validate_api_key(hass: HomeAssistant, api_key: str) -> None:
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Home Assistant AI Support."""
 
-    VERSION = 1  # USUŃ MINOR_VERSION!
+    VERSION = 1
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
