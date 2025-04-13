@@ -12,47 +12,26 @@ jobs:
       contents: write
 
     steps:
-      # Krok 1: Pobierz gałąź main
-      - name: Checkout main
+      # Krok 1: Pobierz kod z gałęzi main
+      - name: Checkout code
         uses: actions/checkout@v3
         with:
           ref: main
           fetch-depth: 0
 
-      # Krok 2: Pobierz wersję z taga
-      - name: Get version from tag
+      # Krok 2: Aktualizuj wersję w manifest.json
+      - name: Update version
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-
-      # Krok 3: Aktualizuj manifest.json i commit
-      - name: Update manifest version
-        run: |
-          # Aktualizuj wersję w pliku
           sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" custom_components/homeassistant_ai_support/manifest.json
-          
-          # Konfiguracja Git
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          
-          # Commit i push
           git add custom_components/homeassistant_ai_support/manifest.json
           git commit -m "Update version to $VERSION"
           git push origin main
 
-      # Krok 4: Tworzenie pliku ZIP
-      - name: Create ZIP file
-        run: |
-          mkdir -p release
-          cd custom_components
-          zip -r ../release/homeassistant_ai_support.zip homeassistant_ai_support
-
-      # Krok 5: Utwórz release
-      - name: Create GitHub Release
+      # Krok 3: Utwórz release z domyślnymi archiwami GitHub
+      - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ env.VERSION }}
-          name: "v${{ env.VERSION }}"
+          tag_name: ${{ github.ref }}
+          name: "v${GITHUB_REF#refs/tags/v}"
           body: "Automatic version update"
-          files: |
-            release/homeassistant_ai_support.zip
