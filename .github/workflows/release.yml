@@ -22,14 +22,13 @@ jobs:
       # Krok 2: Aktualizuj wersję w manifest.json
       - name: Update version
         run: |
-          # Aktualizuj wersję w pliku
           VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_ENV  # Eksportuj do zmiennej środowiskowej
+          
           sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" custom_components/homeassistant_ai_support/manifest.json
-
-          # Konfiguracja Git
+          
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          
           git add custom_components/homeassistant_ai_support/manifest.json
           git commit -m "Update version to $VERSION"
           git push origin main
@@ -39,5 +38,5 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref }}
-          name: "v${{ env.VERSION }}"
+          name: "v${{ env.VERSION }}"  # Użyj zmiennej środowiskowej
           body: "Automatic version update"
