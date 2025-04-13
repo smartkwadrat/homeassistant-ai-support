@@ -22,8 +22,14 @@ jobs:
       # Krok 2: Aktualizuj wersję w manifest.json
       - name: Update version
         run: |
+          # Aktualizuj wersję w pliku
           VERSION=${GITHUB_REF#refs/tags/v}
           sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" custom_components/homeassistant_ai_support/manifest.json
+
+          # Konfiguracja Git
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          
           git add custom_components/homeassistant_ai_support/manifest.json
           git commit -m "Update version to $VERSION"
           git push origin main
