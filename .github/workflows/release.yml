@@ -44,9 +44,8 @@ jobs:
       - name: Create ZIP archive
         run: |
           mkdir -p release
-          cp -r custom_components/homeassistant_ai_support release/
-          cd release
-          zip -r homeassistant_ai_support.zip homeassistant_ai_support
+          cd custom_components
+          zip -r ../release/homeassistant_ai_support.zip homeassistant_ai_support
 
       # Krok 5: Utwórz release
       - name: Create GitHub Release
