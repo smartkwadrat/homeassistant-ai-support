@@ -1,41 +1,40 @@
-name: Create Release ZIP
+name: Release Manager
 
 on:
   push:
     tags:
-      - 'v*'  # Wyzwalaj workflow przy pushu tagów w formacie vX.Y.Z
+      - 'v*'
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      # Krok 1: Pobierz kod i przełącz na gałąź main
-      - name: Checkout code
+      # Krok 1: Pobierz kod z gałęzi main
+      - name: Checkout main
         uses: actions/checkout@v3
         with:
+          ref: main
           fetch-depth: 0
 
-      # Krok 2: Ustaw wersję z taga
-      - name: Set version from tag
+      # Krok 2: Pobierz wersję z taga
+      - name: Get version from tag
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" custom_components/homeassistant_ai_support/manifest.json
 
-      # Krok 3: Commit zmian w manifest.json
-      - name: Commit version update
+      # Krok 3: Aktualizuj manifest.json
+      - name: Update manifest version
         run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
+          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" custom_components/homeassistant_ai_support/manifest.json
           git add custom_components/homeassistant_ai_support/manifest.json
-          git commit -m "Update version to ${{ env.VERSION }}"
+          git commit -m "Update version to $VERSION"
           git push origin main
 
       # Krok 4: Utwórz plik ZIP
-      - name: Create ZIP
+      - name: Create ZIP archive
         run: |
           mkdir -p release
           cp -r custom_components/homeassistant_ai_support release/
@@ -43,11 +42,11 @@ jobs:
           zip -r homeassistant_ai_support.zip homeassistant_ai_support
 
       # Krok 5: Utwórz release i dodaj ZIP
-      - name: Create Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref }}
-          name: "Release ${{ env.VERSION }}"
+          tag_name: v${{ env.VERSION }}
+          name: "v${{ env.VERSION }}"
           body: "Automatyczna aktualizacja wersji"
           files: |
             release/homeassistant_ai_support.zip
