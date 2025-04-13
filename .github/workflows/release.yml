@@ -34,10 +34,10 @@ jobs:
           git commit -m "Update version to $VERSION"
           git push origin main
 
-      # Krok 3: Utwórz release z domyślnymi archiwami GitHub
+      # Krok 3: Utwórz release z poprawną nazwą
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref }}
-          name: "v${GITHUB_REF#refs/tags/v}"
+          name: "v${{ env.VERSION }}"
           body: "Automatic version update"
