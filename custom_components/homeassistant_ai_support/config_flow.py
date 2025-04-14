@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from openai import APIError, AuthenticationError, AsyncOpenAI, DefaultAsyncHttpxClient
+from openai import AsyncOpenAI, APIError, AuthenticationError
 import voluptuous as vol
 
 from homeassistant import config_entries
@@ -26,10 +26,7 @@ _LOGGER = logging.getLogger(__name__)
 async def validate_api_key(hass: HomeAssistant, api_key: str) -> None:
     """Validate OpenAI API key."""
     try:
-        client = AsyncOpenAI(
-            api_key=api_key,
-            http_client=DefaultAsyncHttpxClient()  # Naprawiony klient HTTP
-        )
+        client = AsyncOpenAI(api_key=api_key)
         await client.models.list()
     except AuthenticationError as err:
         _LOGGER.error("Authentication failed: %s", err)
@@ -85,7 +82,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Optional(
                 CONF_MODEL,
                 default=DEFAULT_MODEL
-            ): vol.In(["gpt-4o", "gpt-4-turbo", "gpt-4"]),
+            ): str,
         })
 
         return self.async_show_form(
@@ -124,6 +121,6 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_MODEL,
                     default=self.config_entry.data.get(CONF_MODEL, DEFAULT_MODEL)
-                ): vol.In(["gpt-4o", "gpt-4-turbo", "gpt-4"]),
+                ): str,
             })
         )
