@@ -60,8 +60,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Zapisz koordynator
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
-    # Rejestracja platformy sensor
-    await hass.config_entries.async_forward_entry_setup(entry, "sensor")
+    # Rejestracja platformy sensor - używaj async_forward_entry_setups zamiast async_forward_entry_setup
+    await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
 
     # Rejestracja usługi
     async def handle_analyze_now(call):
@@ -83,6 +83,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_register_panel(hass: HomeAssistant) -> None:
     """Zarejestruj panel AI Analyzer."""
     try:
+        # Importuj funkcje bezpośrednio z modułu frontend
+        from homeassistant.components import frontend
+        
         # Sprawdź czy katalog i plik istnieją
         frontend_dir = pathlib.Path(__file__).parent / "frontend"
         panel_file = frontend_dir / "ai-analyzer-panel.js"
@@ -108,8 +111,9 @@ async def async_register_panel(hass: HomeAssistant) -> None:
             cache_headers=False,
         )
 
-        # Zarejestruj panel
-        await hass.components.frontend.async_register_built_in_panel(
+        # Zarejestruj panel - użyj bezpośrednio zaimportowanej funkcji
+        await frontend.async_register_built_in_panel(
+            hass,
             component_name="custom",
             sidebar_title="AI Analyzer",
             sidebar_icon="mdi:clipboard-text-search",
@@ -177,10 +181,17 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             
             log_service = self.hass.data["system_log"]
             
-            # Pobierz wpisy z handlera logów
-            log_entries = log_service.handler.records
+            # Próbuj różnych metod dostępu do logów
+            log_entries = []
+            
+            # Sprawdź różne możliwe sposoby dostępu do logów
+            if hasattr(log_service, "logs"):
+                log_entries = log_service.logs
+            elif hasattr(log_service, "get_entries"):
+                log_entries = log_service.get_entries()
+            
             if not log_entries:
-                _LOGGER.warning("Nie znaleziono wpisów dziennika systemowego.")
+                _LOGGER.warning("Nie znaleziono wpisów dziennika przez API system_log.")
                 # Próba pobrania logów bezpośrednio z pliku home-assistant.log
                 home_assistant_log = os.path.join(self.hass.config.path(), "home-assistant.log")
                 if os.path.exists(home_assistant_log):
@@ -190,18 +201,19 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         return log_text[-50000:]  # Ostatnie 50k znaków
                 else:
                     return "Nie znaleziono pliku dziennika Home Assistant."
-                
-            # Sformatuj logi jako string
+                    
+            # Formatuj logi
             log_text = ""
             for entry in log_entries:
-                timestamp = entry.created
-                level = entry.levelname
-                name = entry.name
-                message = entry.message
+                # Obsługa różnych formatów wpisów
+                timestamp = getattr(entry, "timestamp", getattr(entry, "created", "Unknown"))
+                level = getattr(entry, "level", getattr(entry, "levelname", "Unknown"))
+                name = getattr(entry, "name", "Unknown")
+                message = getattr(entry, "message", str(entry))
                 
                 log_text += f"{timestamp} [{level}] {name}: {message}\n"
-                if hasattr(entry, "exc_info") and entry.exc_info:
-                    log_text += f"Exception: {entry.exc_info}\n"
+                if hasattr(entry, "exception") and entry.exception:
+                    log_text += f"Exception: {entry.exception}\n"
             
             if not log_text:
                 return "Nie znaleziono wpisów dziennika."

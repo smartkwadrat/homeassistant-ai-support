@@ -1,4 +1,5 @@
 """Config flow for Home Assistant AI Support integration."""
+
 from __future__ import annotations
 
 import logging
@@ -53,7 +54,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     options={
                         CONF_SCAN_INTERVAL: user_input.get(
                             CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
-                        )
+                        ),
                     },
                 )
 
@@ -83,44 +84,51 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow updates."""
-
+    
     def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
+        # Nie przechowuj bezpośrednio config_entry
+        self._entry_id = config_entry.entry_id
+        self._data = dict(config_entry.data)
+        self._options = dict(config_entry.options)
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         """Manage the options."""
         if user_input is not None:
-            # Aktualizacja zarówno danych jak i opcji
-            new_data = {**self.config_entry.data}
-            new_data.update({
-                CONF_API_KEY: user_input[CONF_API_KEY],
-                CONF_MODEL: user_input[CONF_MODEL]
-            })
+            # Pobierz aktualny wpis
+            entry = self.hass.config_entries.async_get_entry(self._entry_id)
+            if entry:
+                # Aktualizuj dane i opcje
+                new_data = {**self._data}
+                new_data.update({
+                    CONF_API_KEY: user_input[CONF_API_KEY],
+                    CONF_MODEL: user_input[CONF_MODEL]
+                })
+                
+                self.hass.config_entries.async_update_entry(
+                    entry,
+                    data=new_data,
+                    options={
+                        CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL]
+                    }
+                )
             
-            self.hass.config_entries.async_update_entry(
-                self.config_entry,
-                data=new_data,
-                options={
-                    CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL]
-                }
-            )
-            return self.async_create_entry(title="", data=user_input)
+            return self.async_create_entry(title="", data={})
 
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
                 vol.Required(
                     CONF_API_KEY,
-                    default=self.config_entry.data.get(CONF_API_KEY, "")
+                    default=self._data.get(CONF_API_KEY, "")
                 ): str,
                 vol.Optional(
                     CONF_MODEL,
-                    default=self.config_entry.data.get(CONF_MODEL, DEFAULT_MODEL)
+                    default=self._data.get(CONF_MODEL, DEFAULT_MODEL)
                 ): str,
                 vol.Optional(
                     CONF_SCAN_INTERVAL,
-                    default=self.config_entry.options.get(
+                    default=self._options.get(
                         CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
                     )
                 ): vol.All(vol.Coerce(int), vol.Range(min=1, max=744)),
