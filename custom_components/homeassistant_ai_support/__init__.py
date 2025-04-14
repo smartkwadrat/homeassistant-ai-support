@@ -15,7 +15,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.helpers.typing import ConfigType
-from homeassistant.components import frontend
+from homeassistant.components import frontend, system_log
 
 from .const import (
     CONF_API_KEY,
@@ -34,7 +34,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.data.setdefault(DOMAIN, {"history": []})
     
     # Websocket API
-    async def websocket_get_history(hass, connection, msg):
+    @callback
+    async def websocket_get_history(connection, msg):
+        """Handle websocket history request."""
         history = hass.data.get(DOMAIN, {}).get("history", [])
         connection.send_result(msg["id"], {"history": history})
     
@@ -44,19 +46,23 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         "Get AI analysis history",
     )
     
-    # Rejestracja panelu
-    await async_register_panel(hass)
+    # Panel registration with delay
+    async def delayed_panel_registration():
+        await hass.async_add_executor_job(Path(hass.config.path("ai_analysis_history.json")).touch)
+        await async_register_panel(hass)
+        
+    hass.async_create_task(delayed_panel_registration())
     
     return True
 
 async def async_register_panel(hass: HomeAssistant) -> None:
-    """Zarejestruj panel AI Analyzer."""
+    """Register AI Analyzer panel."""
     try:
-        frontend_dir = pathlib.Path(__file__).parent / "frontend"
+        frontend_dir = Path(__file__).parent / "frontend"
         panel_file = frontend_dir / "ai-analyzer-panel.js"
         
-        if not frontend_dir.exists() or not panel_file.exists():
-            _LOGGER.error("Brak wymaganych plików frontendu")
+        if not panel_file.exists():
+            _LOGGER.error("Missing frontend file: %s", panel_file)
             return
 
         hass.http.register_static_path(
@@ -76,27 +82,39 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         )
         
     except Exception as err:
-        _LOGGER.error("Błąd rejestracji panelu: %s", err, exc_info=True)
+        _LOGGER.error("Panel registration error: %s", err, exc_info=True)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up from config entry."""
-    hass.data.setdefault(DOMAIN, {"history": []})
+    try:
+        hass.data.setdefault(DOMAIN, {"history": []})
 
-    coordinator = LogAnalysisCoordinator(hass, entry)
-    await coordinator.async_config_entry_first_refresh()
+        # Wait for system_log to initialize
+        if "system_log" not in hass.data:
+            _LOGGER.debug("Waiting for system_log component...")
+            await hass.config_entries.async_wait_component(
+                hass.config_entries.async_entries("system_log")
+            )
 
-    hass.data[DOMAIN][entry.entry_id] = coordinator
+        coordinator = LogAnalysisCoordinator(hass, entry)
+        await coordinator.async_config_entry_first_refresh()
 
-    # Rejestracja platformy sensor
-    await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
+        hass.data[DOMAIN][entry.entry_id] = coordinator
 
-    # Rejestracja usługi
-    async def handle_analyze_now(call):
-        await coordinator.async_refresh()
+        # Sensor platform registration
+        await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
+
+        # Service registration
+        async def handle_analyze_now(call):
+            await coordinator.async_request_refresh()
+            
+        hass.services.async_register(DOMAIN, "analyze_now", handle_analyze_now)
+
+        return True
         
-    hass.services.async_register(DOMAIN, "analyze_now", handle_analyze_now)
-
-    return True
+    except Exception as err:
+        _LOGGER.error("Setup error: %s", err, exc_info=True)
+        return False
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
@@ -107,9 +125,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return False
 
 class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Koordynator analizy logów."""
+    """Log analysis coordinator."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Initialize."""
         self.entry = entry
         self.analyzer = OpenAIAnalyzer(
             hass=hass,
@@ -127,6 +146,7 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     async def _async_update_data(self) -> dict[str, Any]:
+        """Update data via API."""
         try:
             logs = await self._get_system_logs()
             analysis = await self.analyzer.analyze_logs(logs)
@@ -140,33 +160,34 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "log_snippet": logs[-5000:] if len(logs) > 5000 else logs,
             }
         except Exception as err:
-            _LOGGER.exception("Błąd aktualizacji danych: %s", err)
+            _LOGGER.exception("Update error: %s", err)
             return {}
 
     async def _get_system_logs(self) -> str:
+        """Get system logs with retries."""
         try:
+            # Use official system_log API
             if "system_log" in self.hass.data:
-                log_service = self.hass.data["system_log"]
-                log_entries = getattr(log_service, "logs", []) or log_service.get_entries()
+                entries = await system_log.async_get_entries(self.hass)
+                return "\n".join(
+                    f"{entry.timestamp} [{entry.level}] {entry.name}: {entry.message}"
+                    for entry in entries
+                )
                 
-                if log_entries:
-                    return "\n".join(
-                        f"{e.timestamp} [{e.level}] {e.name}: {e.message}"
-                        for e in log_entries
-                    )
-
-            # Fallback do pliku logów
+            # Fallback to log file
             log_file = Path(self.hass.config.path("home-assistant.log"))
             if log_file.exists():
                 async with aiofiles.open(log_file, "r", errors="ignore") as f:
                     return (await f.read())[-50000:]
                     
-            return "Brak dostępnych logów systemowych"
+            return "No logs available"
+            
         except Exception as err:
-            _LOGGER.error("Błąd pobierania logów: %s", err, exc_info=True)
-            return f"Błąd: {err}"
+            _LOGGER.error("Log retrieval error: %s", err)
+            return f"Error: {err}"
 
     async def _save_to_history(self, analysis: str, logs: str) -> None:
+        """Save analysis to history."""
         try:
             entry = {
                 "id": datetime.now().strftime("%y%m%d%H%M%S"),
@@ -176,10 +197,7 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             }
             
             history = self.hass.data[DOMAIN].get("history", [])
-            history.insert(0, entry)
-            
-            if len(history) > 10:
-                history = history[:10]
+            history = [entry] + history[:9]  # Keep only last 10 entries
             
             self.hass.data[DOMAIN]["history"] = history
             
@@ -188,4 +206,4 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await f.write(json.dumps(history, indent=2))
                 
         except Exception as err:
-            _LOGGER.error("Błąd zapisu historii: %s", err)
+            _LOGGER.error("History save error: %s", err)
