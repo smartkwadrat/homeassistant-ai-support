@@ -25,15 +25,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up from config entry."""
     hass.data.setdefault(DOMAIN, {})
     
-    # Inicjalizacja koordynatora
+    # Utwórz koordynator
     coordinator = LogAnalysisCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
     
-    # Zapisz koordynator w hass.data
+    # Zapisz koordynator
     hass.data[DOMAIN][entry.entry_id] = coordinator
     
     # Rejestracja platformy sensor
     await hass.config_entries.async_forward_entry_setup(entry, "sensor")
+    
+    # Rejestracja usługi
+    async def handle_analyze_now(call):
+        """Handle service call."""
+        await coordinator.async_refresh()
+        
+    hass.services.async_register(DOMAIN, "analyze_now", handle_analyze_now)
     
     return True
 
@@ -41,11 +48,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     if await hass.config_entries.async_unload_platforms(entry, ["sensor"]):
         coordinator = hass.data[DOMAIN].pop(entry.entry_id)
-        await coordinator.analyzer.close() 
+        await coordinator.analyzer.close()
         return True
     return False
 
-class LogAnalysisCoordinator(DataUpdateCoordinator):
+class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Koordynator analizy logów."""
     
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -54,7 +61,7 @@ class LogAnalysisCoordinator(DataUpdateCoordinator):
         self.analyzer = OpenAIAnalyzer(
             hass=hass,
             api_key=entry.data[CONF_API_KEY],
-            model=entry.data.get(CONF_MODEL, DEFAULT_MODEL)
+            model=entry.data[CONF_MODEL]
         )
 
         super().__init__(
@@ -67,7 +74,7 @@ class LogAnalysisCoordinator(DataUpdateCoordinator):
         )
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Pobierz i zaktualizuj dane."""
+        """Update data via API."""
         try:
             logs = await self._get_system_logs()
             analysis = await self.analyzer.analyze_logs(logs)
@@ -77,10 +84,9 @@ class LogAnalysisCoordinator(DataUpdateCoordinator):
                 "logs": logs[-5000:]  # Ostatnie 5000 znaków
             }
         except Exception as err:
-            _LOGGER.error("Błąd aktualizacji danych: %s", err)
+            _LOGGER.error("Error updating data: %s", err)
             return {}
 
     async def _get_system_logs(self) -> str:
-        """Pobierz logi systemowe (do implementacji)."""
-        # TODO: Zaimplementuj rzeczywiste pobieranie logów
-        return "Przykładowe logi do testów"
+        """Collect system logs."""
+        return "Sample system logs for testing"
