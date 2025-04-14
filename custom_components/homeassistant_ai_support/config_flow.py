@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from openai import AsyncOpenAI, APIError, AuthenticationError
 import voluptuous as vol
 
 from homeassistant import config_entries
@@ -23,20 +22,10 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-async def validate_api_key(hass: HomeAssistant, api_key: str) -> None:
-    """Validate OpenAI API key."""
-    try:
-        client = AsyncOpenAI(api_key=api_key)
-        await client.models.list()
-    except AuthenticationError as err:
-        _LOGGER.error("Authentication failed: %s", err)
-        raise ValueError("invalid_api_key") from err
-    except APIError as err:
-        _LOGGER.error("API error: %s", err)
-        raise ValueError("connection") from err
-    except Exception as err:
-        _LOGGER.exception("Unexpected error: %s", err)
-        raise ValueError("unknown") from err
+async def validate_api_key(api_key: str) -> None:
+    """Validate OpenAI API key format."""
+    if not api_key.startswith("sk-") or len(api_key) < 32:
+        raise ValueError("invalid_api_key")
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Home Assistant AI Support."""
@@ -52,26 +41,23 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             api_key = user_input[CONF_API_KEY]
             
-            if not api_key.startswith("sk-") or len(api_key) < 32:
-                errors["base"] = "invalid_api_key"
+            try:
+                await validate_api_key(api_key)
+            except ValueError as err:
+                errors["base"] = str(err)
             else:
-                try:
-                    await validate_api_key(self.hass, api_key)
-                except ValueError as err:
-                    errors["base"] = str(err)
-                else:
-                    return self.async_create_entry(
-                        title="AI Support",
-                        data={
-                            CONF_API_KEY: api_key,
-                            CONF_MODEL: user_input.get(CONF_MODEL, DEFAULT_MODEL),
-                        },
-                        options={
-                            CONF_SCAN_INTERVAL: user_input.get(
-                                CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
-                            )
-                        },
-                    )
+                return self.async_create_entry(
+                    title="AI Support",
+                    data={
+                        CONF_API_KEY: api_key,
+                        CONF_MODEL: user_input.get(CONF_MODEL, DEFAULT_MODEL),
+                    },
+                    options={
+                        CONF_SCAN_INTERVAL: user_input.get(
+                            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+                        )
+                    },
+                )
 
         data_schema = vol.Schema({
             vol.Required(CONF_API_KEY): str,
