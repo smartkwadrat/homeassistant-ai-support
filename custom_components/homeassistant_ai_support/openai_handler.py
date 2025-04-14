@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from httpx import AsyncClient as HttpxAsyncClient
 
 from openai import AsyncOpenAI, APIError, AuthenticationError
 from homeassistant.core import HomeAssistant
@@ -21,14 +22,17 @@ class OpenAIAnalyzer:
     ):
         """Inicjalizacja klienta OpenAI."""
         self.hass = hass
-        self.client = AsyncOpenAI(api_key=api_key)
+        self.http_client = HttpxAsyncClient()  # Niestandardowy klient HTTP
+        self.client = AsyncOpenAI(
+            api_key=api_key,
+            http_client=self.http_client,
+            max_retries=0
+        )
         self.model = model
         self.max_tokens = max_tokens
 
     async def analyze_logs(self, logs: str) -> str:
-        """Analiza logów przez OpenAI z pełnym debugowaniem."""
-        _LOGGER.debug("Rozpoczęto analizę logów")
-        
+        """Analiza logów przez OpenAI."""
         system_prompt = (
             "Jesteś ekspertem od analizy logów systemowych Home Assistant. "
             "Przeanalizuj poniższe logi i przygotuj zwięzły raport w języku polskim, "
@@ -44,33 +48,12 @@ class OpenAIAnalyzer:
                 ],
                 max_tokens=self.max_tokens
             )
-            
-            _LOGGER.debug("Otrzymano odpowiedź od OpenAI: %s", response)
             return response.choices[0].message.content
             
-        except AuthenticationError as err:
-            _LOGGER.error("Błąd autoryzacji: %s", err)
-            await self._show_error_notification("Nieprawidłowy klucz API")
-            raise
-            
-        except APIError as err:
-            _LOGGER.error("Błąd API: %s", err)
-            await self._show_error_notification("Problem z połączeniem do OpenAI")
-            raise
-            
         except Exception as err:
-            _LOGGER.exception("Nieoczekiwany błąd: %s", err)
-            await self._show_error_notification("Wewnętrzny błąd systemu")
-            raise
+            _LOGGER.error("Błąd analizy logów: %s", err)
+            return "Błąd analizy"
 
-    async def _show_error_notification(self, message: str) -> None:
-        """Wyświetl powiadomienie o błędzie w interfejsie HA."""
-        await self.hass.services.async_call(
-            "persistent_notification",
-            "create",
-            {
-                "title": "Błąd analizy logów",
-                "message": message,
-                "notification_id": "ai_support_error"
-            }
-        )
+    async def close(self):
+        """Zamknij połączenia."""
+        await self.http_client.aclose()
