@@ -45,13 +45,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return True
     return False
 
-class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+class LogAnalysisCoordinator(DataUpdateCoordinator):
     """Koordynator analizy logów."""
     
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize."""
         self.entry = entry
         self.analyzer = OpenAIAnalyzer(
+            hass=hass,
             api_key=entry.data[CONF_API_KEY],
             model=entry.data.get(CONF_MODEL, DEFAULT_MODEL)
         )
