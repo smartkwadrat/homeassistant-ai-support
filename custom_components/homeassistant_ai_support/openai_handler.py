@@ -5,16 +5,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from httpx import AsyncClient as HttpxAsyncClient
-from openai import AsyncOpenAI, APIError, AuthenticationError, RateLimitError
-
+from openai import AsyncOpenAI, APIError, AuthenticationError
 from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
 
 class OpenAIAnalyzer:
-    """Klasa do zarządzania interakcjami z API OpenAI."""
-
     def __init__(
         self,
         hass: HomeAssistant,
@@ -22,78 +18,44 @@ class OpenAIAnalyzer:
         model: str = "gpt-4o",
         max_tokens: int = 2000
     ):
-        """Inicjalizacja klienta OpenAI."""
         self.hass = hass
-        self.http_client = HttpxAsyncClient()  # Niestandardowy klient HTTP
         self.client = AsyncOpenAI(
             api_key=api_key,
-            http_client=self.http_client,
-            max_retries=3  # Dodana wartość retries dla lepszej odporności
+            max_retries=2
         )
         self.model = model
         self.max_tokens = max_tokens
 
     async def analyze_logs(self, logs: str) -> str:
-        """Analiza logów przez OpenAI."""
-        if not logs or logs.strip() == "":
-            return "Brak logów do analizy."
+        if not logs.strip():
+            return "Brak logów do analizy"
             
         system_prompt = (
             "Jesteś ekspertem od analizy logów systemowych Home Assistant. "
             "Przeanalizuj poniższe logi i przygotuj zwięzły raport w języku polskim, "
-            "wskazując potencjalne problemy i sugerując rozwiązania. "
-            "Skup się na błędach, ostrzeżeniach i nieprawidłowym działaniu systemu."
+            "wskazując potencjalne problemy i sugerując rozwiązania."
         )
-        
-        # Szacowanie tokenów w logach (w przybliżeniu 1 token na 4 znaki)
-        estimated_tokens = len(logs) // 4
-        max_log_tokens = 14000  # Zarezerwuj tokeny na prompt systemowy i odpowiedź
-        
-        # Przytnij logi jeśli przekraczają limit tokenów
-        if estimated_tokens > max_log_tokens:
-            _LOGGER.warning(
-                "Logi przekraczają szacowany limit tokenów (%s > %s). Przycinanie do ostatnich %s tokenów.", 
-                estimated_tokens, max_log_tokens, max_log_tokens
-            )
-            # Zachowaj najnowsze logi (ostatnią część stringa)
-            logs = logs[-max_log_tokens * 4:]
-            logs = "...[logi zostały przycięte ze względu na rozmiar]...\n" + logs
-        
+
         try:
-            _LOGGER.debug("Wysyłanie %s znaków logów do API OpenAI", len(logs))
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": logs}
+                    {"role": "user", "content": logs[-30000:]}
                 ],
                 max_tokens=self.max_tokens
             )
+            return response.choices[0].message.content
             
-            analysis = response.choices[0].message.content
-            _LOGGER.debug("Otrzymano analizę z API OpenAI (%s znaków)", len(analysis))
-            return analysis
-            
-        except APIError as api_err:
-            error_message = f"Błąd API OpenAI: {api_err}"
-            _LOGGER.error(error_message)
-            return error_message
-            
-        except AuthenticationError as auth_err:
-            error_message = f"Błąd uwierzytelniania OpenAI: {auth_err}"
-            _LOGGER.error(error_message)
-            return error_message
-            
-        except RateLimitError as rate_err:
-            error_message = f"Przekroczono limit zapytań OpenAI: {rate_err}"
-            _LOGGER.error(error_message)
-            return error_message
-            
+        except APIError as err:
+            _LOGGER.error("Błąd API OpenAI: %s", err)
+            return f"Błąd API: {err}"
+        except AuthenticationError as err:
+            _LOGGER.error("Błąd autentykacji: %s", err)
+            return "Nieprawidłowy klucz API"
         except Exception as err:
-            error_message = f"Błąd analizy logów: {err}"
-            _LOGGER.error(error_message)
-            return error_message
+            _LOGGER.error("Błąd analizy: %s", err, exc_info=True)
+            return f"Błąd analizy: {err}"
 
     async def close(self):
-        """Zamknij połączenia."""
-        await self.http_client.aclose()
+        await self.client.close()

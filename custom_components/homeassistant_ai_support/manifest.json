@@ -1,10 +1,10 @@
 {
   "domain": "homeassistant_ai_support",
   "name": "Wsparcie AI Home Assistant",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "documentation": "https://github.com/smartkwadrat/homeassistant-ai-support",
   "issue_tracker": "https://github.com/smartkwadrat/homeassistant-ai-support/issues",
-  "dependencies": ["http", "recorder", "system_log", "websocket_api", "frontend"],
+  "dependencies": ["system_log", "websocket_api", "frontend"],
   "codeowners": ["@smartkwadrat"],
   "requirements": ["openai>=1.33.0", "aiofiles>=0.8.0"],
   "config_flow": true,
