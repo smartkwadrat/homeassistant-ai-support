@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import os
 import json
-import pathlib
 import aiofiles
 from datetime import datetime, timedelta
 from typing import Any
@@ -35,15 +34,18 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     
     # Websocket API
     @callback
-    async def websocket_get_history(connection, msg):
+    async def websocket_get_history(hass, connection, msg):
         """Handle websocket history request."""
         history = hass.data.get(DOMAIN, {}).get("history", [])
+        _LOGGER.debug("WebSocket request: returning %d history items", len(history))
         connection.send_result(msg["id"], {"history": history})
     
     hass.components.websocket_api.async_register_command(
         f"{DOMAIN}/get_history",
         websocket_get_history,
-        "Get AI analysis history",
+        {
+            "type": f"{DOMAIN}/get_history",
+        }
     )
     
     # Panel registration with delay
@@ -71,7 +73,8 @@ async def async_register_panel(hass: HomeAssistant) -> None:
             cache_headers=False,
         )
 
-        await frontend.async_register_built_in_panel(
+        # Usunięto await przed wywołaniem funkcji
+        frontend.async_register_built_in_panel(
             hass,
             component_name="custom",
             sidebar_title="AI Analyzer",
@@ -168,11 +171,19 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             # Use official system_log API
             if "system_log" in self.hass.data:
-                entries = await system_log.async_get_entries(self.hass)
-                return "\n".join(
-                    f"{entry.timestamp} [{entry.level}] {entry.name}: {entry.message}"
-                    for entry in entries
-                )
+                # Próba dostępu do wpisów logów w różny sposób
+                if hasattr(system_log, "get_integration_logger"):
+                    entries = system_log.get_integration_logger(self.hass, 1000)
+                    return "\n".join(
+                        f"{entry.timestamp} [{entry.level}] {entry.name}: {entry.message}"
+                        for entry in entries
+                    )
+                elif hasattr(self.hass.data["system_log"], "records"):
+                    entries = self.hass.data["system_log"].records
+                    return "\n".join(
+                        f"{entry.timestamp} [{entry.level}] {entry.name}: {entry.message}"
+                        for entry in entries
+                    )
                 
             # Fallback to log file
             log_file = Path(self.hass.config.path("home-assistant.log"))
