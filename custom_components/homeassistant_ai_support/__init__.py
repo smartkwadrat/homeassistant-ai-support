@@ -81,7 +81,7 @@ async def async_register_panel(hass: HomeAssistant) -> None:
             sidebar_icon="mdi:clipboard-text-search",
             frontend_url_path="ai-analyzer",
             require_admin=True,
-            config={"js_url": "/static/ai-analyzer-panel.js"},
+            config={"module_url": "/static/ai-analyzer-panel.js"},
         )
         
     except Exception as err:
@@ -167,35 +167,40 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return {}
 
     async def _get_system_logs(self) -> str:
-        """Get system logs with retries."""
         try:
-            # Use official system_log API
             if "system_log" in self.hass.data:
-                # Próba dostępu do wpisów logów w różny sposób
                 if hasattr(system_log, "get_integration_logger"):
                     entries = system_log.get_integration_logger(self.hass, 1000)
-                    return "\n".join(
-                        f"{entry.timestamp} [{entry.level}] {entry.name}: {entry.message}"
-                        for entry in entries
-                    )
                 elif hasattr(self.hass.data["system_log"], "records"):
                     entries = self.hass.data["system_log"].records
-                    return "\n".join(
-                        f"{entry.timestamp} [{entry.level}] {entry.name}: {entry.message}"
-                        for entry in entries
-                    )
-                
-            # Fallback to log file
+                else:
+                    entries = []
+            
+                def format_entry(entry):
+                    # Jeśli entry ma atrybut timestamp
+                    if hasattr(entry, "timestamp"):
+                        return f"{entry.timestamp} [{entry.level}] {entry.name}: {entry.message}"
+                    # Jeśli entry jest krotką i ma co najmniej 4 elementy
+                    elif isinstance(entry, tuple) and len(entry) >= 4:
+                        timestamp, level, name, message = entry[:4]
+                        return f"{timestamp} [{level}] {name}: {message}"
+                    # Inny format lub pominięcie
+                    return str(entry)
+            
+                return "\n".join(format_entry(entry) for entry in entries)
+
+            # Fallback: odczyt z pliku logów
             log_file = Path(self.hass.config.path("home-assistant.log"))
             if log_file.exists():
                 async with aiofiles.open(log_file, "r", errors="ignore") as f:
-                    return (await f.read())[-50000:]
+                    eturn (await f.read())[-50000:]
                     
             return "No logs available"
             
         except Exception as err:
             _LOGGER.error("Log retrieval error: %s", err)
             return f"Error: {err}"
+
 
     async def _save_to_history(self, analysis: str, logs: str) -> None:
         """Save analysis to history."""
