@@ -1,7 +1,10 @@
 """Obsługa API OpenAI dla integracji Home Assistant AI Support."""
+
 from __future__ import annotations
+
 import logging
 from typing import Any
+
 from openai import AsyncOpenAI, APIError, AuthenticationError
 from homeassistant.core import HomeAssistant
 
@@ -29,7 +32,7 @@ class OpenAIAnalyzer:
     async def analyze_logs(self, logs: str, cost_optimization: bool) -> str:
         if not logs.strip():
             return "Brak logów do analizy"
-        
+
         if cost_optimization:
             logs = self._optimize_logs(logs)
 
@@ -56,7 +59,7 @@ class OpenAIAnalyzer:
     def _optimize_logs(self, logs: str) -> str:
         lines = logs.split('\n')
         return '\n'.join([
-            line for line in lines 
+            line for line in lines
             if any(keyword in line for keyword in ['ERROR', 'WARNING'])
         ][-1000:])
 

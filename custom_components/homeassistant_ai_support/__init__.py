@@ -4,13 +4,12 @@ from __future__ import annotations
 import logging
 import os
 import json
-import aiofiles
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.helpers.typing import ConfigType
 
@@ -31,12 +30,10 @@ from .openai_handler import OpenAIAnalyzer
 _LOGGER = logging.getLogger(__name__)
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up the integration."""
     hass.data.setdefault(DOMAIN, {})
     return True
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up config entry."""
     try:
         coordinator = LogAnalysisCoordinator(hass, entry)
         await coordinator.async_config_entry_first_refresh()
@@ -48,12 +45,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         
         hass.services.async_register(DOMAIN, "analyze_now", handle_analyze_now)
 
-        # Rejestracja system_health platformy (zgodnie z nowym API)
         if entry.options.get(CONF_DIAGNOSTIC_INTEGRATION, True):
-            # system_health jest teraz automatycznie wykrywany jako platforma, nie rejestrujemy ręcznie
-            if entry.supports_unload:
-                from .diagnostics import async_get_config_entry_diagnostics
-                entry.async_setup_diagnostics(hass, async_get_config_entry_diagnostics)
+            from .diagnostics import async_get_config_entry_diagnostics
+            hass.config_entries.async_setup_diagnostics(
+                entry.entry_id, 
+                async_get_config_entry_diagnostics
+            )
 
         return True
     except Exception as err:
@@ -61,18 +58,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return False
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload config entry."""
     if await hass.config_entries.async_unload_platforms(entry, ["sensor"]):
         coordinator = hass.data[DOMAIN].pop(entry.entry_id)
         await coordinator.analyzer.close()
         return True
     return False
 
-class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Koordynator analizy logów."""
-
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
-        """Initialize coordinator."""
+class LogAnalysisCoordinator(DataUpdateCoordinator):
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry):
         self.hass = hass
         self.entry = entry
         self.analyzer = OpenAIAnalyzer(
@@ -81,6 +74,7 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             model=MODEL_MAPPING[entry.data.get(CONF_MODEL, "GPT-4.1 mini")],
             system_prompt=entry.data.get(CONF_SYSTEM_PROMPT, "")
         )
+        
         super().__init__(
             hass,
             _LOGGER,
@@ -90,65 +84,59 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ),
         )
 
-    async def _async_update_data(self) -> dict[str, Any]:
-        """Aktualizacja danych."""
+    async def _async_update_data(self) -> dict:
         try:
             raw_logs = await self._get_system_logs()
             filtered_logs = self._filter_logs(
                 raw_logs, 
                 self.entry.options.get(CONF_LOG_LEVELS, ["ERROR", "WARNING"])
             )
+            
             analysis = await self.analyzer.analyze_logs(
                 filtered_logs,
                 self.entry.options.get(CONF_COST_OPTIMIZATION, False)
             )
+            
             await self._save_to_file(analysis, filtered_logs)
             await self._cleanup_old_reports()
             return {"status": "success", "last_run": datetime.now().isoformat()}
+        
         except Exception as err:
             _LOGGER.exception("Update error: %s", err)
             return {"status": "error", "error": str(err)}
 
     async def _get_system_logs(self) -> str:
-        """Pobierz logi z pliku home-assistant.log."""
         log_path = Path(self.hass.config.path("home-assistant.log"))
         try:
-            async with aiofiles.open(log_path, "r") as f:
-                return await f.read()
+            return await self.hass.async_add_executor_job(
+                lambda: log_path.read_text(encoding="utf-8")
+            )
         except Exception as err:
             _LOGGER.error("Błąd odczytu logów: %s", err)
             return ""
 
     def _filter_logs(self, logs: str, levels: list) -> str:
-        """Filtruj logi według poziomów ważności."""
         return '\n'.join([
             line for line in logs.split('\n')
             if any(f"[{level}]" in line for level in levels)
         ])
 
     async def _save_to_file(self, analysis: str, logs: str) -> None:
-        """Zapisz raport do pliku."""
         report_dir = Path(self.hass.config.path("ai_reports"))
-        report_dir.mkdir(exist_ok=True)
+        await self.hass.async_add_executor_job(report_dir.mkdir, exist_ok=True)
+        
         filename = f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         report_path = report_dir / filename
+        
         data = {
             "timestamp": datetime.now().isoformat(),
             "report": analysis,
             "log_snippet": logs[-5000:] if len(logs) > 5000 else logs
         }
-        async with aiofiles.open(report_path, "w") as f:
-            await f.write(json.dumps(data, indent=2, ensure_ascii=False))
-
-    async def _cleanup_old_reports(self) -> None:
-        """Usuń stare raporty."""
-        max_reports = self.entry.options.get(CONF_MAX_REPORTS, 10)
-        report_dir = Path(self.hass.config.path("ai_reports"))
-        if not report_dir.exists():
-            return
-        files = [f for f in report_dir.iterdir() if f.is_file()]
-        if len(files) <= max_reports:
-            return
-        files.sort(key=os.path.getctime)
-        for old_file in files[:-max_reports]:
-            old_file.unlink()
+        
+        await self.hass.async_add_executor_job(
+            lambda: report_path.write_text(
+                json.dumps(data, indent=2, ensure_ascii=False),
+                encoding="utf-8"
+            )
+        )
