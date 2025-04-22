@@ -13,8 +13,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.helpers.typing import ConfigType
-from homeassistant.helpers import system_health
-from homeassistant.components.system_health import SystemHealthProtocol
 
 from .const import (
     CONF_API_KEY,
@@ -50,15 +48,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         
         hass.services.async_register(DOMAIN, "analyze_now", handle_analyze_now)
 
+        # Rejestracja system_health platformy (zgodnie z nowym API)
         if entry.options.get(CONF_DIAGNOSTIC_INTEGRATION, True):
-            # Rejestracja system health
-            system_health.async_register_component(
-                hass,
-                DOMAIN,
-                system_health_info
-            )
-            
-            # Rejestracja diagnostyki jeśli obsługiwane
+            # system_health jest teraz automatycznie wykrywany jako platforma, nie rejestrujemy ręcznie
             if entry.supports_unload:
                 from .diagnostics import async_get_config_entry_diagnostics
                 entry.async_setup_diagnostics(hass, async_get_config_entry_diagnostics)
@@ -89,7 +81,6 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             model=MODEL_MAPPING[entry.data.get(CONF_MODEL, "GPT-4.1 mini")],
             system_prompt=entry.data.get(CONF_SYSTEM_PROMPT, "")
         )
-        
         super().__init__(
             hass,
             _LOGGER,
@@ -107,16 +98,13 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 raw_logs, 
                 self.entry.options.get(CONF_LOG_LEVELS, ["ERROR", "WARNING"])
             )
-            
             analysis = await self.analyzer.analyze_logs(
                 filtered_logs,
                 self.entry.options.get(CONF_COST_OPTIMIZATION, False)
             )
-            
             await self._save_to_file(analysis, filtered_logs)
             await self._cleanup_old_reports()
             return {"status": "success", "last_run": datetime.now().isoformat()}
-        
         except Exception as err:
             _LOGGER.exception("Update error: %s", err)
             return {"status": "error", "error": str(err)}
@@ -142,16 +130,13 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Zapisz raport do pliku."""
         report_dir = Path(self.hass.config.path("ai_reports"))
         report_dir.mkdir(exist_ok=True)
-        
         filename = f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         report_path = report_dir / filename
-        
         data = {
             "timestamp": datetime.now().isoformat(),
             "report": analysis,
             "log_snippet": logs[-5000:] if len(logs) > 5000 else logs
         }
-        
         async with aiofiles.open(report_path, "w") as f:
             await f.write(json.dumps(data, indent=2, ensure_ascii=False))
 
@@ -159,30 +144,11 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Usuń stare raporty."""
         max_reports = self.entry.options.get(CONF_MAX_REPORTS, 10)
         report_dir = Path(self.hass.config.path("ai_reports"))
-        
         if not report_dir.exists():
             return
-        
         files = [f for f in report_dir.iterdir() if f.is_file()]
         if len(files) <= max_reports:
             return
-        
         files.sort(key=os.path.getctime)
         for old_file in files[:-max_reports]:
             old_file.unlink()
-
-@callback
-def async_register_system_health(hass: HomeAssistant, register: SystemHealthProtocol) -> None:
-    """Rejestracja informacji o stanie systemu."""
-    register.async_register_info(system_health_info)
-
-async def system_health_info(hass: HomeAssistant) -> dict[str, Any]:
-    """Zbierz informacje o stanie systemu."""
-    reports_dir = Path(hass.config.path("ai_reports"))
-    return {
-        "total_reports": len(list(reports_dir.glob("*.json"))),
-        "last_analysis": next((
-            f.stem.split("_")[1] 
-            for f in sorted(reports_dir.glob("*.json"), key=lambda x: x.stat().st_ctime, reverse=True)
-        ), "never")
-    }
