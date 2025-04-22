@@ -41,6 +41,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         
         hass.data[DOMAIN][entry.entry_id] = coordinator
 
+        # Rejestracja platformy sensor
+        hass.async_create_task(
+            hass.config_entries.async_forward_entry_setup(entry, "sensor")
+        )
+
         async def handle_analyze_now(call):
             await coordinator.async_request_refresh()
         
@@ -52,11 +57,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise ConfigEntryNotReady from err
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    if await hass.config_entries.async_unload_platforms(entry, ["sensor"]):
-        coordinator = hass.data[DOMAIN].pop(entry.entry_id)
-        await coordinator.analyzer.close()
-        return True
-    return False
+    # Zwolnij wszystkie zasoby i platformy
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor"])
+    
+    if unload_ok:
+        if entry.entry_id in hass.data[DOMAIN]:
+            coordinator = hass.data[DOMAIN].pop(entry.entry_id)
+            await coordinator.analyzer.close()
+            
+    return unload_ok
 
 class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
