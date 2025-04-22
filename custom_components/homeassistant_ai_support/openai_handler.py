@@ -1,10 +1,7 @@
 """Obsługa API OpenAI dla integracji Home Assistant AI Support."""
-
 from __future__ import annotations
-
 import logging
 from typing import Any
-
 from openai import AsyncOpenAI, APIError, AuthenticationError
 from homeassistant.core import HomeAssistant
 
@@ -15,38 +12,33 @@ class OpenAIAnalyzer:
         self,
         hass: HomeAssistant,
         api_key: str,
-        model: str = "gpt-4o",
+        model: str = "GPT-4.1 mini",
+        system_prompt: str = "",
         max_tokens: int = 2000
     ):
         self.hass = hass
-        self.client = AsyncOpenAI(
-            api_key=api_key,
-            max_retries=2
-        )
+        self.client = AsyncOpenAI(api_key=api_key, max_retries=2)
         self.model = model
+        self.system_prompt = system_prompt
         self.max_tokens = max_tokens
 
-    async def analyze_logs(self, logs: str) -> str:
+    async def analyze_logs(self, logs: str, cost_optimization: bool) -> str:
         if not logs.strip():
             return "Brak logów do analizy"
-            
-        system_prompt = (
-            "Jesteś ekspertem od analizy logów systemowych Home Assistant. "
-            "Przeanalizuj poniższe logi i przygotuj zwięzły raport w języku polskim, "
-            "wskazując potencjalne problemy i sugerując rozwiązania."
-        )
+        
+        if cost_optimization:
+            logs = self._optimize_logs(logs)
 
         try:
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": system_prompt},
+                    {"role": "system", "content": self.system_prompt},
                     {"role": "user", "content": logs[-30000:]}
                 ],
                 max_tokens=self.max_tokens
             )
             return response.choices[0].message.content
-            
         except APIError as err:
             _LOGGER.error("Błąd API OpenAI: %s", err)
             return f"Błąd API: {err}"
@@ -56,6 +48,13 @@ class OpenAIAnalyzer:
         except Exception as err:
             _LOGGER.error("Błąd analizy: %s", err, exc_info=True)
             return f"Błąd analizy: {err}"
+
+    def _optimize_logs(self, logs: str) -> str:
+        lines = logs.split('\n')
+        return '\n'.join([
+            line for line in lines 
+            if any(keyword in line for keyword in ['ERROR', 'WARNING'])
+        ][-1000:])
 
     async def close(self):
         await self.client.close()

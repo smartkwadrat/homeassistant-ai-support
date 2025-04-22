@@ -1,20 +1,38 @@
 """Constants for the Home Assistant AI Support integration."""
-
-# Domenę integracji musi być zgodna z nazwą folderu
 DOMAIN = "homeassistant_ai_support"
 
-# Klucze konfiguracji
+# Konfiguracja
 CONF_API_KEY = "api_key"
-CONF_SCAN_INTERVAL = "scan_interval"
 CONF_MODEL = "model"
+CONF_SCAN_INTERVAL = "scan_interval"
+CONF_COST_OPTIMIZATION = "cost_optimization"
+CONF_SYSTEM_PROMPT = "system_prompt"
+CONF_LOG_LEVELS = "log_levels"
+CONF_MAX_REPORTS = "max_reports"
+CONF_DIAGNOSTIC_INTEGRATION = "diagnostic_integration"
 
 # Wartości domyślne
-DEFAULT_MODEL = "gpt-4"
-DEFAULT_SCAN_INTERVAL = 24  # w godzinach
+DEFAULT_SCAN_INTERVAL = 24
+DEFAULT_COST_OPTIMIZATION = False
+DEFAULT_MAX_REPORTS = 10
+DEFAULT_DIAGNOSTIC_INTEGRATION = True
+DEFAULT_LOG_LEVELS = ["ERROR", "WARNING"]
 
-# Usługi
-SERVICE_ANALYZE_NOW = "analyze_now"
+# Mapowanie modeli
+MODEL_MAPPING = {
+    "GPT-4.1": "gpt-4.1",
+    "GPT-4.1 mini": "gpt-4.1-mini",
+    "GPT-4.1 nano": "gpt-4.1-nano",
+    "GPT-4o": "gpt-4o",
+    "GPT-4o mini": "gpt-4o-mini"
+}
 
-# Atrybuty encji
-ATTR_LAST_ANALYSIS = "last_analysis"
-ATTR_ANALYSIS_REPORT = "analysis_report"
+MODEL_LIST = list(MODEL_MAPPING.keys())
+DEFAULT_MODEL = "GPT-4.1 mini"
+
+# Prompt systemowy
+DEFAULT_SYSTEM_PROMPT = (
+    "Jesteś ekspertem od analizy logów systemowych Home Assistant. "
+    "Przeanalizuj poniższe logi i przygotuj zwięzły raport, "
+    "wskazując potencjalne problemy i sugerując rozwiązania."
+)

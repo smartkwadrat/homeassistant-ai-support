@@ -4,10 +4,20 @@
   "version": "0.4.6",
   "documentation": "https://github.com/smartkwadrat/homeassistant-ai-support",
   "issue_tracker": "https://github.com/smartkwadrat/homeassistant-ai-support/issues",
-  "dependencies": ["system_log", "websocket_api", "frontend"],
+  "dependencies": ["system_log", "websocket_api"],
   "codeowners": ["@smartkwadrat"],
   "requirements": ["openai>=1.33.0", "aiofiles>=0.8.0"],
   "config_flow": true,
   "iot_class": "cloud_polling",
-  "loggers": ["homeassistant_ai_support"]
+  "loggers": ["homeassistant_ai_support"],
+  "translations": [
+      {
+          "language": "en",
+          "path": "translations/en.json"
+      },
+      {
+          "language": "pl",
+          "path": "translations/pl.json"
+      }
+  ]
 }

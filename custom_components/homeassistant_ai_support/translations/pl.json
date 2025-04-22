@@ -1,34 +1,45 @@
 {
-    "config": {
+  "config": {
       "step": {
-        "user": {
-          "title": "Konfiguracja Wsparcia AI",
-          "description": "Skonfiguruj integrację do analizy logów przy użyciu ChatGPT",
-          "data": {
-            "api_key": "Klucz API OpenAI",
-            "scan_interval": "Interwał analizy (w godzinach)"
+          "user": {
+              "title": "Konfiguracja Wsparcia AI",
+              "description": "Skonfiguruj integrację do analizy logów przy użyciu modeli AI",
+              "data": {
+                  "api_key": "Klucz API OpenAI",
+                  "scan_interval": "Interwał analizy (w godzinach)",
+                  "model": "Model AI",
+                  "system_prompt": "Prompt systemowy",
+                  "cost_optimization": "Optymalizacja kosztów",
+                  "log_levels": "Poziomy logów",
+                  "max_reports": "Maksymalna liczba raportów",
+                  "diagnostic_integration": "Integracja diagnostyczna"
+              }
           }
-        }
       },
       "error": {
-        "invalid_api_key": "Nieprawidłowy format klucza API (powinien zaczynać się od 'sk-' i mieć co najmniej 32 znaki)",
-        "connection": "Błąd połączenia z API OpenAI",
-        "unknown": "Nieznany błąd"
+          "invalid_api_key": "Nieprawidłowy klucz API (musi zaczynać się od 'sk-' i mieć co najmniej 32 znaki)",
+          "connection": "Błąd połączenia z API OpenAI",
+          "unknown": "Nieznany błąd"
+      },
+      "abort": {
+          "already_configured": "Integracja jest już skonfigurowana"
       }
-    },
-    "options": {
+  },
+  "options": {
       "step": {
-        "init": {
-          "data": {
-            "scan_interval": "Interwał analizy (w godzinach)",
-            "model": "Model"
+          "init": {
+              "title": "Aktualizuj ustawienia Wsparcia AI",
+              "data": {
+                  "api_key": "Klucz API",
+                  "model": "Model AI",
+                  "system_prompt": "Prompt systemowy",
+                  "scan_interval": "Interwał analizy (w godzinach)",
+                  "cost_optimization": "Optymalizacja kosztów",
+                  "log_levels": "Poziomy logów",
+                  "max_reports": "Maksymalna liczba raportów",
+                  "diagnostic_integration": "Integracja diagnostyczna"
+              }
           }
-        }
       }
-    },
-    "state": {
-      "error": "Błąd",
-      "ok": "Gotowe"
-    }
   }
-  
+}

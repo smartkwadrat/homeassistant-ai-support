@@ -1,126 +1,62 @@
 """Home Assistant AI Support integration."""
-
 from __future__ import annotations
-
 import logging
 import os
 import json
 import aiofiles
 from datetime import datetime, timedelta
-from typing import Any
 from pathlib import Path
-
+from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.helpers.typing import ConfigType
-from homeassistant.components import frontend, system_log
-
+from homeassistant.components import system_log
 from .const import (
     CONF_API_KEY,
     CONF_MODEL,
     CONF_SCAN_INTERVAL,
-    DEFAULT_MODEL,
-    DEFAULT_SCAN_INTERVAL,
+    CONF_COST_OPTIMIZATION,
+    CONF_SYSTEM_PROMPT,
+    CONF_LOG_LEVELS,
+    CONF_MAX_REPORTS,
+    CONF_DIAGNOSTIC_INTEGRATION,
     DOMAIN,
+    MODEL_MAPPING
 )
 from .openai_handler import OpenAIAnalyzer
 
 _LOGGER = logging.getLogger(__name__)
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up the AI Support component."""
-    hass.data.setdefault(DOMAIN, {"history": []})
-    
-    # Websocket API
-    @callback
-    async def websocket_get_history(hass, connection, msg):
-        """Handle websocket history request."""
-        history = hass.data.get(DOMAIN, {}).get("history", [])
-        _LOGGER.debug("WebSocket request: returning %d history items", len(history))
-        connection.send_result(msg["id"], {"history": history})
-    
-    hass.components.websocket_api.async_register_command(
-        f"{DOMAIN}/get_history",
-        websocket_get_history,
-        {
-            "type": f"{DOMAIN}/get_history",
-        }
-    )
-    
-    # Panel registration with delay
-    async def delayed_panel_registration():
-        await hass.async_add_executor_job(Path(hass.config.path("ai_analysis_history.json")).touch)
-        await async_register_panel(hass)
-        
-    hass.async_create_task(delayed_panel_registration())
-    
+    hass.data.setdefault(DOMAIN, {})
     return True
 
-async def async_register_panel(hass: HomeAssistant) -> None:
-    """Register AI Analyzer panel."""
-    try:
-        frontend_dir = Path(__file__).parent / "frontend"
-        panel_file = frontend_dir / "ai-analyzer-panel.js"
-        
-        if not panel_file.exists():
-            _LOGGER.error("Missing frontend file: %s", panel_file)
-            return
-
-        hass.http.register_static_path(
-            "/static/ai-analyzer-panel.js",
-            str(panel_file),
-            cache_headers=False,
-        )
-
-        # Usunięto await przed wywołaniem funkcji
-        frontend.async_register_built_in_panel(
-            hass,
-            component_name="custom",
-            sidebar_title="AI Analyzer",
-            sidebar_icon="mdi:clipboard-text-search",
-            frontend_url_path="ai-analyzer",
-            require_admin=True,
-            config={"module_url": "/static/ai-analyzer-panel.js"},
-        )
-        
-    except Exception as err:
-        _LOGGER.error("Panel registration error: %s", err, exc_info=True)
-
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up from config entry."""
     try:
-        hass.data.setdefault(DOMAIN, {"history": []})
-
-        # Wait for system_log to initialize
-        if "system_log" not in hass.data:
-            _LOGGER.debug("Waiting for system_log component...")
-            await hass.config_entries.async_wait_component(
-                hass.config_entries.async_entries("system_log")
-            )
-
         coordinator = LogAnalysisCoordinator(hass, entry)
         await coordinator.async_config_entry_first_refresh()
-
+        
         hass.data[DOMAIN][entry.entry_id] = coordinator
 
-        # Sensor platform registration
-        await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
-
-        # Service registration
         async def handle_analyze_now(call):
             await coordinator.async_request_refresh()
-            
+        
         hass.services.async_register(DOMAIN, "analyze_now", handle_analyze_now)
 
-        return True
+        if entry.options.get(CONF_DIAGNOSTIC_INTEGRATION, True):
+            from .diagnostics import async_get_config_entry_diagnostics
+            from .system_health import async_register_system_health
+            
+            async_register_system_health(hass)
+            entry.async_setup_diagnostics(hass, async_get_config_entry_diagnostics)
         
+        return True
     except Exception as err:
         _LOGGER.error("Setup error: %s", err, exc_info=True)
         return False
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
     if await hass.config_entries.async_unload_platforms(entry, ["sensor"]):
         coordinator = hass.data[DOMAIN].pop(entry.entry_id)
         await coordinator.analyzer.close()
@@ -128,98 +64,78 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return False
 
 class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Log analysis coordinator."""
-
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
-        """Initialize."""
         self.entry = entry
         self.analyzer = OpenAIAnalyzer(
             hass=hass,
             api_key=entry.data[CONF_API_KEY],
-            model=entry.data.get(CONF_MODEL, DEFAULT_MODEL)
+            model=MODEL_MAPPING[entry.data.get(CONF_MODEL, "GPT-4.1 mini")],
+            system_prompt=entry.data.get(CONF_SYSTEM_PROMPT, "")
         )
-
+        
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
             update_interval=timedelta(
-                hours=entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+                hours=entry.options.get(CONF_SCAN_INTERVAL, 24)
             ),
         )
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Update data via API."""
         try:
-            logs = await self._get_system_logs()
-            analysis = await self.analyzer.analyze_logs(logs)
+            raw_logs = await self._get_system_logs()
+            filtered_logs = self._filter_logs(
+                raw_logs, 
+                self.entry.options.get(CONF_LOG_LEVELS, ["ERROR", "WARNING"])
+            )
             
-            analysis_id = datetime.now().strftime("%y%m%d%H%M%S")
-            await self._save_to_history(analysis, logs)
+            analysis = await self.analyzer.analyze_logs(
+                filtered_logs,
+                self.entry.options.get(CONF_COST_OPTIMIZATION, False)
+            )
             
-            return {
-                "last_analysis": analysis_id,
-                "report": analysis,
-                "log_snippet": logs[-5000:] if len(logs) > 5000 else logs,
-            }
+            await self._save_to_file(analysis, filtered_logs)
+            await self._cleanup_old_reports()
+            return {"status": "success", "last_run": datetime.now().isoformat()}
+        
         except Exception as err:
             _LOGGER.exception("Update error: %s", err)
-            return {}
+            return {"status": "error", "error": str(err)}
 
-    async def _get_system_logs(self) -> str:
-        try:
-            if "system_log" in self.hass.data:
-                if hasattr(system_log, "get_integration_logger"):
-                    entries = system_log.get_integration_logger(self.hass, 1000)
-                elif hasattr(self.hass.data["system_log"], "records"):
-                    entries = self.hass.data["system_log"].records
-                else:
-                    entries = []
-            
-                def format_entry(entry):
-                    # Jeśli entry ma atrybut timestamp
-                    if hasattr(entry, "timestamp"):
-                        return f"{entry.timestamp} [{entry.level}] {entry.name}: {entry.message}"
-                    # Jeśli entry jest krotką i ma co najmniej 4 elementy
-                    elif isinstance(entry, tuple) and len(entry) >= 4:
-                        timestamp, level, name, message = entry[:4]
-                        return f"{timestamp} [{level}] {name}: {message}"
-                    # Inny format lub pominięcie
-                    return str(entry)
-            
-                return "\n".join(format_entry(entry) for entry in entries)
+    def _filter_logs(self, logs: str, levels: list) -> str:
+        return '\n'.join([
+            line for line in logs.split('\n')
+            if any(f"[{level}]" in line for level in levels)
+        ])
 
-            # Fallback: odczyt z pliku logów
-            log_file = Path(self.hass.config.path("home-assistant.log"))
-            if log_file.exists():
-                async with aiofiles.open(log_file, "r", errors="ignore") as f:
-                    eturn (await f.read())[-50000:]
-                    
-            return "No logs available"
-            
-        except Exception as err:
-            _LOGGER.error("Log retrieval error: %s", err)
-            return f"Error: {err}"
+    async def _save_to_file(self, analysis: str, logs: str) -> None:
+        report_dir = Path(self.hass.config.path("ai_reports"))
+        report_dir.mkdir(exist_ok=True)
+        
+        filename = f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        report_path = report_dir / filename
+        
+        data = {
+            "timestamp": datetime.now().isoformat(),
+            "report": analysis,
+            "log_snippet": logs[-5000:] if len(logs) > 5000 else logs
+        }
+        
+        async with aiofiles.open(report_path, "w") as f:
+            await f.write(json.dumps(data, indent=2, ensure_ascii=False))
 
-
-    async def _save_to_history(self, analysis: str, logs: str) -> None:
-        """Save analysis to history."""
-        try:
-            entry = {
-                "id": datetime.now().strftime("%y%m%d%H%M%S"),
-                "timestamp": datetime.now().isoformat(),
-                "report": analysis,
-                "logs_preview": logs[:500] + ("..." if len(logs) > 500 else "")
-            }
-            
-            history = self.hass.data[DOMAIN].get("history", [])
-            history = [entry] + history[:9]  # Keep only last 10 entries
-            
-            self.hass.data[DOMAIN]["history"] = history
-            
-            history_file = Path(self.hass.config.path("ai_analysis_history.json"))
-            async with aiofiles.open(history_file, "w") as f:
-                await f.write(json.dumps(history, indent=2))
-                
-        except Exception as err:
-            _LOGGER.error("History save error: %s", err)
+    async def _cleanup_old_reports(self) -> None:
+        max_reports = self.entry.options.get(CONF_MAX_REPORTS, 10)
+        report_dir = Path(self.hass.config.path("ai_reports"))
+        
+        if not report_dir.exists():
+            return
+        
+        files = [f for f in report_dir.iterdir() if f.is_file()]
+        if len(files) <= max_reports:
+            return
+        
+        files.sort(key=os.path.getctime)
+        for old_file in files[:-max_reports]:
+            old_file.unlink()
