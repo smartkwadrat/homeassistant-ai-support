@@ -1,7 +1,7 @@
 {
   "domain": "homeassistant_ai_support",
   "name": "Wsparcie AI Home Assistant",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "documentation": "https://github.com/smartkwadrat/homeassistant-ai-support",
   "issue_tracker": "https://github.com/smartkwadrat/homeassistant-ai-support/issues",
   "dependencies": ["system_log", "websocket_api"],
