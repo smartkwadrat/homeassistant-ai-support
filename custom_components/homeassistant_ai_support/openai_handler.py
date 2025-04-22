@@ -12,12 +12,16 @@ class OpenAIAnalyzer:
         self,
         hass: HomeAssistant,
         api_key: str,
-        model: str = "GPT-4.1 mini",
+        model: str = "gpt-4.1-mini",
         system_prompt: str = "",
         max_tokens: int = 2000
     ):
         self.hass = hass
-        self.client = AsyncOpenAI(api_key=api_key, max_retries=2)
+        self.client = AsyncOpenAI(
+            api_key=api_key,
+            max_retries=2,
+            timeout=30.0
+        )
         self.model = model
         self.system_prompt = system_prompt
         self.max_tokens = max_tokens

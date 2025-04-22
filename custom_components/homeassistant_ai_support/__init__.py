@@ -45,11 +45,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.services.async_register(DOMAIN, "analyze_now", handle_analyze_now)
 
         if entry.options.get(CONF_DIAGNOSTIC_INTEGRATION, True):
-            from .diagnostics import async_get_config_entry_diagnostics
             from .system_health import async_register_system_health
-            
             async_register_system_health(hass)
-            entry.async_setup_diagnostics(hass, async_get_config_entry_diagnostics)
+            
+            if entry.async_supports_unload():
+                from .diagnostics import async_get_config_entry_diagnostics
+                entry.async_setup_diagnostics(hass, async_get_config_entry_diagnostics)
         
         return True
     except Exception as err:

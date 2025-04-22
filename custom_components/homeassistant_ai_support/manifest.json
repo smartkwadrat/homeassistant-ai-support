@@ -6,7 +6,11 @@
   "issue_tracker": "https://github.com/smartkwadrat/homeassistant-ai-support/issues",
   "dependencies": ["system_log", "websocket_api"],
   "codeowners": ["@smartkwadrat"],
-  "requirements": ["openai>=1.33.0", "aiofiles>=0.8.0"],
+  "requirements": [
+    "openai>=1.55.3",
+    "aiofiles>=0.8.0",
+    "httpx>=0.27.0,<0.28.0"
+],
   "config_flow": true,
   "iot_class": "cloud_polling",
   "loggers": ["homeassistant_ai_support"],
