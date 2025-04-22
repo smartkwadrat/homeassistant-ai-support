@@ -11,4 +11,4 @@ logger:
     custom_components.homeassistant_ai_support: debug
     openai: debug
 
-Version 0.5.8
+Version 0.5.9
