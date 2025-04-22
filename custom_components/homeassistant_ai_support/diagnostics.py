@@ -1,11 +1,13 @@
 """Diagnostics support for AI Support integration."""
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
-from .const import DOMAIN, CONF_API_KEY
+from pathlib import Path
+from .const import DOMAIN
 
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, 
-    entry: config_validation.ConfigEntry
+    entry: ConfigEntry
 ) -> dict:
     """Return diagnostics for config entry."""
     return {

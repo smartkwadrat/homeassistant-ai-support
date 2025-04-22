@@ -64,9 +64,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return True
     return False
 
-class LogAnalysisCoordinator(DataUpdateCoordinator):
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry):
-        self.hass = hass
+class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.entry = entry
         self.analyzer = OpenAIAnalyzer(
             hass=hass,
@@ -84,7 +83,7 @@ class LogAnalysisCoordinator(DataUpdateCoordinator):
             ),
         )
 
-    async def _async_update_data(self) -> dict:
+    async def _async_update_data(self) -> dict[str, Any]:
         try:
             raw_logs = await self._get_system_logs()
             filtered_logs = self._filter_logs(
@@ -123,7 +122,9 @@ class LogAnalysisCoordinator(DataUpdateCoordinator):
 
     async def _save_to_file(self, analysis: str, logs: str) -> None:
         report_dir = Path(self.hass.config.path("ai_reports"))
-        await self.hass.async_add_executor_job(report_dir.mkdir, exist_ok=True)
+        await self.hass.async_add_executor_job(
+            lambda: report_dir.mkdir(exist_ok=True)
+        )
         
         filename = f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         report_path = report_dir / filename
@@ -140,3 +141,18 @@ class LogAnalysisCoordinator(DataUpdateCoordinator):
                 encoding="utf-8"
             )
         )
+
+    async def _cleanup_old_reports(self) -> None:
+        max_reports = self.entry.options.get(CONF_MAX_REPORTS, 10)
+        report_dir = Path(self.hass.config.path("ai_reports"))
+        
+        files = await self.hass.async_add_executor_job(
+            lambda: [f for f in report_dir.iterdir() if f.is_file()]
+        )
+        
+        if len(files) <= max_reports:
+            return
+        
+        files.sort(key=lambda x: x.stat().st_ctime)
+        for old_file in files[:-max_reports]:
+            await self.hass.async_add_executor_job(old_file.unlink)
