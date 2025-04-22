@@ -10,6 +10,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.helpers.typing import ConfigType
 
@@ -45,17 +46,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         
         hass.services.async_register(DOMAIN, "analyze_now", handle_analyze_now)
 
-        if entry.options.get(CONF_DIAGNOSTIC_INTEGRATION, True):
-            from .diagnostics import async_get_config_entry_diagnostics
-            hass.config_entries.async_setup_diagnostics(
-                entry.entry_id, 
-                async_get_config_entry_diagnostics
-            )
-
         return True
     except Exception as err:
         _LOGGER.error("Setup error: %s", err, exc_info=True)
-        return False
+        raise ConfigEntryNotReady from err
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if await hass.config_entries.async_unload_platforms(entry, ["sensor"]):
@@ -155,4 +149,6 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         
         files.sort(key=lambda x: x.stat().st_ctime)
         for old_file in files[:-max_reports]:
-            await self.hass.async_add_executor_job(old_file.unlink)
+            await self.hass.async_add_executor_job(
+                lambda: old_file.unlink()
+            )

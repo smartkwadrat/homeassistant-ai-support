@@ -4,7 +4,7 @@
   "version": "0.5.8",
   "documentation": "https://github.com/smartkwadrat/homeassistant-ai-support",
   "issue_tracker": "https://github.com/smartkwadrat/homeassistant-ai-support/issues",
-  "dependencies": ["system_log"],
+  "dependencies": [],
   "codeowners": ["@smartkwadrat"],
   "requirements": ["openai>=1.55.3", "aiofiles>=0.8.0"],
   "config_flow": true,
