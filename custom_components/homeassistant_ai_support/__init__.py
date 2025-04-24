@@ -114,12 +114,43 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return ""
 
     def _filter_logs(self, logs: str, levels: list) -> str:
+        """Filtruje logi według wybranych poziomów i loguje fragmenty do debugowania."""
+        import logging
+        _LOGGER = logging.getLogger(__name__)
+
         if not logs:
+            _LOGGER.debug("Plik logów jest pusty.")
             return ""
-        return '\n'.join([
+
+        # Mapowanie polskich etykiet na angielskie poziomy logowania
+        level_map = {
+            "DEBUG": "DEBUG",
+            "INFO": "INFO",
+            "WARNING": "WARNING",
+            "ERROR": "ERROR",
+            "CRITICAL": "CRITICAL",
+            "Debug": "DEBUG",
+            "Informacyjne": "INFO",
+            "Ostrzeżenia": "WARNING",
+            "Błędy": "ERROR",
+            "Krytyczne": "CRITICAL",
+        }
+        # Zamień wybrane poziomy na angielskie
+        mapped_levels = [level_map.get(level, level).upper() for level in levels]
+
+        _LOGGER.debug("Wybrane poziomy logów (po mapowaniu): %s", mapped_levels)
+        _LOGGER.debug("Fragment oryginalnych logów:\n%s", logs[:1000])
+
+        filtered_lines = [
             line for line in logs.split('\n')
-            if any(f"[{level}]" in line for level in levels)
-        ])
+            if any(f" {level} " in line for level in mapped_levels)
+        ]
+        filtered_logs = '\n'.join(filtered_lines)
+
+        _LOGGER.debug("Fragment przefiltrowanych logów:\n%s", filtered_logs[:1000])
+        _LOGGER.debug("Liczba linii po filtracji: %d", len(filtered_lines))
+
+        return filtered_logs
 
     async def _save_to_file(self, analysis: str, logs: str) -> None:
         report_dir = Path(self.hass.config.path("ai_reports"))
