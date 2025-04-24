@@ -1,19 +1,10 @@
 # homeassistant-ai-support
 
 This is custom integration to home assistant which use ChatGPT for analyzing logs and system behaviour
-
-To enable logging for this integration, add following lines to configuration.yaml:
-
-```yaml
-logger:
-  default: info
-  logs:
-    custom_components.homeassistant_ai_support: debug
-    openai: debug
-```
 Version 0.6.6
 
-Karta do wyświetlania raportu:
+
+Dashboard card for displaying the newest report:
 
 ```yaml
 type: markdown
@@ -29,3 +20,14 @@ content: |-
     **Raport:** {{ state_attr('sensor.ai_support_status_analizy_logow', 'report') }}
 
   ```
+
+
+(Optional) To enable logging for this integration, add following lines to configuration.yaml:
+
+```yaml
+logger:
+  default: info
+  logs:
+    custom_components.homeassistant_ai_support: debug
+    openai: debug
+```
