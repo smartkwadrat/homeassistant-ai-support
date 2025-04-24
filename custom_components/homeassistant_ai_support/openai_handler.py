@@ -7,7 +7,7 @@ from typing import Any
 
 from openai import AsyncOpenAI, APIError, AuthenticationError
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.executor import async_get_clientsession
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ class OpenAIAnalyzer:
                 model=self.model,
                 messages=[
                     {"role": "system", "content": self.system_prompt},
-                    {"role": "user", "content": logs[-30000:]}
+                    {"role": "user", "content": logs[-30000:] if logs else "Brak logów do analizy"}
                 ],
                 max_tokens=self.max_tokens
             )
@@ -61,6 +61,8 @@ class OpenAIAnalyzer:
             return f"Błąd analizy: {err}"
 
     def _optimize_logs(self, logs: str) -> str:
+        if not logs:
+            return ""
         lines = logs.split('\n')
         return '\n'.join([
             line for line in lines
@@ -68,5 +70,7 @@ class OpenAIAnalyzer:
         ][-1000:])
 
     async def close(self):
+        # OpenAI client może nie mieć metody close w najnowszych wersjach
         if hasattr(self.client, 'close'):
             await self.client.close()
+        # Jeśli używamy sesji aiohttp, to ona zajmie się zamknięciem

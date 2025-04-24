@@ -121,23 +121,31 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.error("Błąd odczytu logów: %s", err)
             return ""
 
+    def _filter_logs(self, logs: str, levels: list) -> str:
+        if not logs:
+            return ""
+        return '\n'.join([
+            line for line in logs.split('\n')
+            if any(f"[{level}]" in line for level in levels)
+        ])
+
     async def _save_to_file(self, analysis: str, logs: str) -> None:
         report_dir = Path(self.hass.config.path("ai_reports"))
-    
+        
         # Tworzenie katalogu jeśli nie istnieje za pomocą executor_job
         await self.hass.async_add_executor_job(
             lambda: report_dir.mkdir(exist_ok=True)
         )
-    
+        
         filename = f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         report_path = report_dir / filename
-    
+        
         data = {
             "timestamp": datetime.now().isoformat(),
             "report": analysis,
             "log_snippet": logs[-5000:] if len(logs) > 5000 else logs
         }
-    
+        
         # Zapisanie pliku za pomocą executor_job
         await self.hass.async_add_executor_job(
             lambda: report_path.write_text(
@@ -150,32 +158,32 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _cleanup_old_reports(self) -> None:
         max_reports = self.entry.options.get(CONF_MAX_REPORTS, 10)
         report_dir = Path(self.hass.config.path("ai_reports"))
-    
+        
         # Sprawdzenie czy katalog istnieje za pomocą executor_job
         exists = await self.hass.async_add_executor_job(
             lambda: report_dir.exists()
         )
-    
+        
         if not exists:
             return
-    
+        
         # Pobranie listy plików za pomocą executor_job
         files = await self.hass.async_add_executor_job(
             lambda: [f for f in report_dir.iterdir() if f.is_file() and f.name.endswith('.json')]
         )
-    
+        
         if len(files) <= max_reports:
             return
-    
+        
         # Sortowanie plików według daty utworzenia
         files_with_time = await self.hass.async_add_executor_job(
             lambda: [(f, f.stat().st_ctime) for f in files]
         )
         files_with_time.sort(key=lambda x: x[1])
-    
+        
         # Usunięcie starych plików
         for old_file, _ in files_with_time[:-max_reports]:
             await self.hass.async_add_executor_job(
-                lambda file=old_file: file.unlink()
+                lambda f=old_file: f.unlink()
             )
             _LOGGER.debug("Usunięto stary raport: %s", old_file)
