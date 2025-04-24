@@ -7,6 +7,7 @@ from typing import Any
 
 from openai import AsyncOpenAI, APIError, AuthenticationError
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.executor import async_get_clientsession
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -20,10 +21,13 @@ class OpenAIAnalyzer:
         max_tokens: int = 2000
     ):
         self.hass = hass
+        # Używamy HTTP klienta Home Assistant, który jest async-safe
+        session = async_get_clientsession(hass)
         self.client = AsyncOpenAI(
             api_key=api_key,
             max_retries=2,
-            timeout=30.0
+            timeout=30.0,
+            http_client=session
         )
         self.model = model
         self.system_prompt = system_prompt
@@ -64,4 +68,5 @@ class OpenAIAnalyzer:
         ][-1000:])
 
     async def close(self):
-        await self.client.close()
+        if hasattr(self.client, 'close'):
+            await self.client.close()

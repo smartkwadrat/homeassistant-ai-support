@@ -110,54 +110,72 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _get_system_logs(self) -> str:
         log_path = Path(self.hass.config.path("home-assistant.log"))
         try:
-            return await self.hass.async_add_executor_job(
-                lambda: log_path.read_text(encoding="utf-8")
+            # Używamy executor_job do operacji blokujących I/O
+            content = await self.hass.async_add_executor_job(
+                lambda: log_path.read_text(encoding="utf-8") if log_path.exists() else ""
             )
+            if not content:
+                _LOGGER.warning("Plik logów jest pusty lub nie istnieje: %s", log_path)
+            return content
         except Exception as err:
             _LOGGER.error("Błąd odczytu logów: %s", err)
             return ""
 
-    def _filter_logs(self, logs: str, levels: list) -> str:
-        return '\n'.join([
-            line for line in logs.split('\n')
-            if any(f"[{level}]" in line for level in levels)
-        ])
-
     async def _save_to_file(self, analysis: str, logs: str) -> None:
         report_dir = Path(self.hass.config.path("ai_reports"))
+    
+        # Tworzenie katalogu jeśli nie istnieje za pomocą executor_job
         await self.hass.async_add_executor_job(
             lambda: report_dir.mkdir(exist_ok=True)
         )
-        
+    
         filename = f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         report_path = report_dir / filename
-        
+    
         data = {
             "timestamp": datetime.now().isoformat(),
             "report": analysis,
             "log_snippet": logs[-5000:] if len(logs) > 5000 else logs
         }
-        
+    
+        # Zapisanie pliku za pomocą executor_job
         await self.hass.async_add_executor_job(
             lambda: report_path.write_text(
                 json.dumps(data, indent=2, ensure_ascii=False),
                 encoding="utf-8"
             )
         )
+        _LOGGER.info("Zapisano raport do pliku: %s", report_path)
 
     async def _cleanup_old_reports(self) -> None:
         max_reports = self.entry.options.get(CONF_MAX_REPORTS, 10)
         report_dir = Path(self.hass.config.path("ai_reports"))
-        
-        files = await self.hass.async_add_executor_job(
-            lambda: [f for f in report_dir.iterdir() if f.is_file()]
+    
+        # Sprawdzenie czy katalog istnieje za pomocą executor_job
+        exists = await self.hass.async_add_executor_job(
+            lambda: report_dir.exists()
         )
-        
+    
+        if not exists:
+            return
+    
+        # Pobranie listy plików za pomocą executor_job
+        files = await self.hass.async_add_executor_job(
+            lambda: [f for f in report_dir.iterdir() if f.is_file() and f.name.endswith('.json')]
+        )
+    
         if len(files) <= max_reports:
             return
-        
-        files.sort(key=lambda x: x.stat().st_ctime)
-        for old_file in files[:-max_reports]:
+    
+        # Sortowanie plików według daty utworzenia
+        files_with_time = await self.hass.async_add_executor_job(
+            lambda: [(f, f.stat().st_ctime) for f in files]
+        )
+        files_with_time.sort(key=lambda x: x[1])
+    
+        # Usunięcie starych plików
+        for old_file, _ in files_with_time[:-max_reports]:
             await self.hass.async_add_executor_job(
-                lambda: old_file.unlink()
+                lambda file=old_file: file.unlink()
             )
+            _LOGGER.debug("Usunięto stary raport: %s", old_file)

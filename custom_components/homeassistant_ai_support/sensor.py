@@ -4,7 +4,8 @@ from __future__ import annotations
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.typing import ConfigEntry
+from homeassistant.config_entries import ConfigEntry  # Poprawiony import
+from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
 
@@ -37,7 +38,7 @@ class LogAnalysisSensor(CoordinatorEntity, SensorEntity):
             "error": self.coordinator.data.get("error")
         }
 
-async def async_setup_entry(hass, entry: ConfigEntry, async_add_entities):
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
     """Konfiguracja platformy sensor."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([LogAnalysisSensor(coordinator)])
