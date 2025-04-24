@@ -5,9 +5,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import httpx
 from openai import AsyncOpenAI, APIError, AuthenticationError
+
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -21,13 +22,11 @@ class OpenAIAnalyzer:
         max_tokens: int = 2000
     ):
         self.hass = hass
-        # Używamy HTTP klienta Home Assistant, który jest async-safe
-        session = async_get_clientsession(hass)
+        self.httpx_client = httpx.AsyncClient(timeout=30.0)
         self.client = AsyncOpenAI(
             api_key=api_key,
             max_retries=2,
-            timeout=30.0,
-            http_client=session
+            http_client=self.httpx_client
         )
         self.model = model
         self.system_prompt = system_prompt
@@ -36,10 +35,8 @@ class OpenAIAnalyzer:
     async def analyze_logs(self, logs: str, cost_optimization: bool) -> str:
         if not logs.strip():
             return "Brak logów do analizy"
-
         if cost_optimization:
             logs = self._optimize_logs(logs)
-
         try:
             response = await self.client.chat.completions.create(
                 model=self.model,
@@ -70,7 +67,4 @@ class OpenAIAnalyzer:
         ][-1000:])
 
     async def close(self):
-        # OpenAI client może nie mieć metody close w najnowszych wersjach
-        if hasattr(self.client, 'close'):
-            await self.client.close()
-        # Jeśli używamy sesji aiohttp, to ona zajmie się zamknięciem
+        await self.httpx_client.aclose()
