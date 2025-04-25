@@ -11,14 +11,5 @@
   "iot_class": "cloud_polling",
   "integration_type": "service",
   "loggers": ["homeassistant_ai_support"],
-  "translations": [
-    {
-      "language": "en",
-      "path": "translations/en.json"
-    },
-    {
-      "language": "pl",
-      "path": "translations/pl.json"
-    }
-  ]
+  "translations": ["en", "pl"]
 }
