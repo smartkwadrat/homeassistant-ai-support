@@ -59,12 +59,13 @@ class OpenAIAnalyzer:
         except APIError as err:
             _LOGGER.error("OpenAI API error: %s", err)
             return f"API Error: {err}"
+        
         except AuthenticationError as err:
             _LOGGER.error("Authentication error: %s", err)
-            return "Invalid API key"
-        except Exception as err:
-            _LOGGER.error("Analysis error: %s", err, exc_info=True)
-            return f"Analysis error: {err}"
+            return "invalid_api_key_auth" 
+        
+        except ConnectionError as err:
+            return "connection_error"
 
     def _optimize_logs(self, logs: str) -> str:
         """Optimize logs for cost reduction."""

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import json
 import aiofiles
+import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -23,7 +24,7 @@ from .const import (
     CONF_SCAN_INTERVAL,
     DOMAIN,
     MODEL_MAPPING,
-    ANALYSIS_INTERVAL_OPTIONS,
+    SCAN_INTERVAL_OPTIONS,
 )
 from .openai_handler import OpenAIAnalyzer
 
@@ -52,6 +53,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return True
     except Exception as err:
         _LOGGER.error("Setup error: %s", err, exc_info=True)
+        if isinstance(err, ConnectionError):
+            raise ConfigEntryNotReady(
+                translation_domain=DOMAIN,
+                translation_key="config_entry_not_ready"
+            ) from err
         raise ConfigEntryNotReady from err
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -108,7 +114,7 @@ class LogAnalysisCoordinator:
                 await self._async_sleep(86400)  # 24h
 
     def _get_interval_days(self):
-        return ANALYSIS_INTERVAL_OPTIONS.get(
+        return SCAN_INTERVAL_OPTIONS.get(
             self.entry.options.get(CONF_SCAN_INTERVAL, "every_7_days"), 7
         )
 

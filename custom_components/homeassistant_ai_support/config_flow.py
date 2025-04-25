@@ -39,13 +39,13 @@ _LOGGER = logging.getLogger(__name__)
 async def validate_api_key(api_key: str) -> None:
     """Validate OpenAI API key format and functionality."""
     if not api_key.startswith("sk-") or len(api_key) < 32:
-        raise ValueError("invalid_api_key")
+        raise ValueError("invalid_api_key_format")
     
     async with AsyncOpenAI(api_key=api_key) as client:
         try:
             await client.models.list(timeout=5.0)
         except AuthenticationError:
-            raise ValueError("invalid_api_key")
+            raise ValueError("invalid_api_key_auth")
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
@@ -57,7 +57,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             try:
                 await validate_api_key(user_input[CONF_API_KEY])
             except ValueError as err:
-                errors["base"] = str(err)
+                if "invalid_api_key_format" in str(err):
+                    errors["base"] = "invalid_api_key_format"
+                elif "invalid_api_key_auth" in str(err):
+                    errors["base"] = "invalid_api_key_auth"
             else:
                 return self.async_create_entry(
                     title="AI Support",

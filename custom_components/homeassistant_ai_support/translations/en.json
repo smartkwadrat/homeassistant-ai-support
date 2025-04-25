@@ -15,9 +15,9 @@
           "diagnostic_integration": "Enable Diagnostic Integration"
         },
         "error": {
-          "invalid_api_key": "Invalid API Key (must start with 'sk-' and be at least 32 characters)",
-          "connection": "Connection error with OpenAI API",
-          "unknown": "Unknown error"
+          "connection_error": "Connection error with OpenAI API",
+          "invalid_api_key_format": "Invalid API Key (must start with 'sk-' and be at least 32 characters)",
+          "invalid_api_key_auth": "Authentication failed"
         },
         "abort": {
           "already_configured": "Integration is already configured"

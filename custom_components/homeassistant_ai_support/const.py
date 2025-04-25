@@ -39,8 +39,8 @@ DEFAULT_SYSTEM_PROMPT = (
 
 # Opcje interwału analizy
 SCAN_INTERVAL_OPTIONS = {
-    "daily": "Codziennie",
-    "every_2_days": "Co 2 dni",
-    "every_7_days": "Co 7 dni",
-    "every_30_days": "Co 30 dni"
+    "daily": 1,
+    "every_2_days": 2,
+    "every_7_days": 7,
+    "every_30_days": 30
 }
