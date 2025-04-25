@@ -25,6 +25,7 @@ from .const import (
     DOMAIN,
     MODEL_MAPPING,
     SCAN_INTERVAL_OPTIONS,
+    CONF_SYSTEM_PROMPT
 )
 from .openai_handler import OpenAIAnalyzer
 
