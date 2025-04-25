@@ -1,17 +1,21 @@
 """Config flow for Home Assistant AI Support integration."""
+
 from __future__ import annotations
+
 import logging
 from typing import Any
+
 import voluptuous as vol
+
 from homeassistant.helpers import config_validation as cv
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_API_KEY
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
+
 from .const import (
     CONF_MODEL,
-    CONF_SCAN_INTERVAL,
     CONF_COST_OPTIMIZATION,
     CONF_SYSTEM_PROMPT,
     CONF_LOG_LEVELS,
@@ -19,7 +23,6 @@ from .const import (
     CONF_DIAGNOSTIC_INTEGRATION,
     MODEL_MAPPING,
     DEFAULT_MODEL,
-    DEFAULT_SCAN_INTERVAL,
     DEFAULT_COST_OPTIMIZATION,
     DEFAULT_SYSTEM_PROMPT,
     DEFAULT_LOG_LEVELS,
@@ -29,6 +32,14 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+SCAN_INTERVAL_OPTIONS = {
+    "daily": "Codziennie",
+    "every_2_days": "Co 2 dni",
+    "every_7_days": "Co 7 dni",
+    "every_30_days": "Co 30 dni",
+}
+SCAN_INTERVAL_DEFAULT = "daily"
 
 async def validate_api_key_format(api_key: str) -> None:
     if not api_key.startswith("sk-") or len(api_key) < 32:
@@ -53,7 +64,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_SYSTEM_PROMPT: user_input[CONF_SYSTEM_PROMPT],
                     },
                     options={
-                        CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL],
+                        "scan_interval": user_input["scan_interval"],
                         CONF_COST_OPTIMIZATION: user_input[CONF_COST_OPTIMIZATION],
                         CONF_LOG_LEVELS: user_input[CONF_LOG_LEVELS],
                         CONF_MAX_REPORTS: user_input[CONF_MAX_REPORTS],
@@ -66,9 +77,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Optional(CONF_MODEL, default=DEFAULT_MODEL): vol.In(MODEL_MAPPING.keys()),
             vol.Optional(CONF_SYSTEM_PROMPT, default=DEFAULT_SYSTEM_PROMPT): str,
             vol.Optional(
-                CONF_SCAN_INTERVAL,
-                default=DEFAULT_SCAN_INTERVAL
-            ): vol.All(vol.Coerce(int), vol.Range(min=1, max=744)),
+                "scan_interval",
+                default=SCAN_INTERVAL_DEFAULT
+            ): vol.In(SCAN_INTERVAL_OPTIONS.keys()),
             vol.Optional(
                 CONF_COST_OPTIMIZATION,
                 default=DEFAULT_COST_OPTIMIZATION
@@ -101,38 +112,41 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, config_entry: ConfigEntry) -> None:
-        self.config_entry = config_entry
+        self._config_entry = config_entry
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
+
+        options = self._config_entry.options
+        data = self._config_entry.data
 
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
                 vol.Required(
                     CONF_API_KEY,
-                    default=self.config_entry.data.get(CONF_API_KEY, "")
+                    default=data.get(CONF_API_KEY, "")
                 ): str,
                 vol.Optional(
                     CONF_MODEL,
-                    default=self.config_entry.data.get(CONF_MODEL, DEFAULT_MODEL)
+                    default=data.get(CONF_MODEL, DEFAULT_MODEL)
                 ): vol.In(MODEL_MAPPING.keys()),
                 vol.Optional(
                     CONF_SYSTEM_PROMPT,
-                    default=self.config_entry.data.get(CONF_SYSTEM_PROMPT, DEFAULT_SYSTEM_PROMPT)
+                    default=data.get(CONF_SYSTEM_PROMPT, DEFAULT_SYSTEM_PROMPT)
                 ): str,
                 vol.Optional(
-                    CONF_SCAN_INTERVAL,
-                    default=self.config_entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=744)),
+                    "scan_interval",
+                    default=options.get("scan_interval", SCAN_INTERVAL_DEFAULT)
+                ): vol.In(SCAN_INTERVAL_OPTIONS.keys()),
                 vol.Optional(
                     CONF_COST_OPTIMIZATION,
-                    default=self.config_entry.options.get(CONF_COST_OPTIMIZATION, DEFAULT_COST_OPTIMIZATION)
+                    default=options.get(CONF_COST_OPTIMIZATION, DEFAULT_COST_OPTIMIZATION)
                 ): bool,
                 vol.Optional(
                     CONF_LOG_LEVELS,
-                    default=self.config_entry.options.get(CONF_LOG_LEVELS, DEFAULT_LOG_LEVELS)
+                    default=options.get(CONF_LOG_LEVELS, DEFAULT_LOG_LEVELS)
                 ): cv.multi_select({
                     "DEBUG": "Debug",
                     "INFO": "Informacyjne",
@@ -142,11 +156,11 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 }),
                 vol.Optional(
                     CONF_MAX_REPORTS,
-                    default=self.config_entry.options.get(CONF_MAX_REPORTS, DEFAULT_MAX_REPORTS)
+                    default=options.get(CONF_MAX_REPORTS, DEFAULT_MAX_REPORTS)
                 ): vol.All(vol.Coerce(int), vol.Range(min=3, max=30)),
                 vol.Optional(
                     CONF_DIAGNOSTIC_INTEGRATION,
-                    default=self.config_entry.options.get(CONF_DIAGNOSTIC_INTEGRATION, DEFAULT_DIAGNOSTIC_INTEGRATION)
+                    default=options.get(CONF_DIAGNOSTIC_INTEGRATION, DEFAULT_DIAGNOSTIC_INTEGRATION)
                 ): bool,
             })
         )

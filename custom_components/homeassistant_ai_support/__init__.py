@@ -5,31 +5,37 @@ from __future__ import annotations
 import logging
 import os
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time as dt_time
 from pathlib import Path
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.helpers.typing import ConfigType
 
 from .const import (
     CONF_API_KEY,
     CONF_MODEL,
-    CONF_SCAN_INTERVAL,
     CONF_COST_OPTIMIZATION,
     CONF_SYSTEM_PROMPT,
     CONF_LOG_LEVELS,
     CONF_MAX_REPORTS,
     CONF_DIAGNOSTIC_INTEGRATION,
     DOMAIN,
-    MODEL_MAPPING
+    MODEL_MAPPING,
 )
+
 from .openai_handler import OpenAIAnalyzer
 
 _LOGGER = logging.getLogger(__name__)
+
+ANALYSIS_INTERVAL_OPTIONS = {
+    "daily": 1,
+    "every_2_days": 2,
+    "every_7_days": 7,
+    "every_30_days": 30,
+}
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.data.setdefault(DOMAIN, {})
@@ -38,7 +44,6 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         coordinator = LogAnalysisCoordinator(hass, entry)
-        await coordinator.async_config_entry_first_refresh()
         hass.data[DOMAIN][entry.entry_id] = coordinator
 
         # Rejestracja platformy sensor
@@ -46,10 +51,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.config_entries.async_forward_entry_setup(entry, "sensor")
         )
 
+        # Zarejestruj usługę manualnego wywołania analizy
         async def handle_analyze_now(call):
-            await coordinator.async_request_refresh()
+            await coordinator.run_analysis()
 
         hass.services.async_register(DOMAIN, "analyze_now", handle_analyze_now)
+
+        # Zaplanuj pierwsze uruchomienie po starcie HA
+        @callback
+        async def schedule_analysis(event=None):
+            await coordinator.schedule_periodic_analysis()
+
+        hass.bus.async_listen_once("homeassistant_started", schedule_analysis)
+
         return True
 
     except Exception as err:
@@ -62,10 +76,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if entry.entry_id in hass.data[DOMAIN]:
             coordinator = hass.data[DOMAIN].pop(entry.entry_id)
             await coordinator.analyzer.close()
+            await coordinator.async_stop()
     return unload_ok
 
-class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+class LogAnalysisCoordinator:
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        self.hass = hass
         self.entry = entry
         self.analyzer = OpenAIAnalyzer(
             hass=hass,
@@ -73,16 +89,54 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             model=MODEL_MAPPING[entry.data.get(CONF_MODEL, "GPT-4.1 mini")],
             system_prompt=entry.data.get(CONF_SYSTEM_PROMPT, "")
         )
-        super().__init__(
-            hass,
-            _LOGGER,
-            name=DOMAIN,
-            update_interval=timedelta(
-                hours=entry.options.get(CONF_SCAN_INTERVAL, 24)
-            ),
-        )
+        self._task = None
+        self.data = {"status": "inactive", "last_run": None, "error": None}
 
-    async def _async_update_data(self) -> dict[str, Any]:
+    async def schedule_periodic_analysis(self):
+        # Anuluj istniejące zadanie, jeśli jest
+        await self.async_stop()
+        self._task = self.hass.loop.create_task(self._periodic_analysis_loop())
+
+    async def async_stop(self):
+        if self._task and not self._task.done():
+            self._task.cancel()
+            try:
+                await self._task
+            except Exception:
+                pass
+        self._task = None
+
+    async def _periodic_analysis_loop(self):
+        # Pobierz interwał z opcji
+        interval_days = self._get_interval_days()
+        while True:
+            now = datetime.now()
+            next_run = now.replace(hour=23, minute=50, second=0, microsecond=0)
+            if now >= next_run:
+                next_run += timedelta(days=1)
+            # Sprawdź, czy to pierwszy run po starcie (nie generuj od razu raportu)
+            sleep_seconds = (next_run - now).total_seconds()
+            await self._async_sleep(sleep_seconds)
+            await self.run_analysis()
+            # Kolejne uruchomienia wg interwału
+            for _ in range(interval_days - 1):
+                await self._async_sleep(24 * 3600)
+            # pętla powtarza się
+
+    def _get_interval_days(self):
+        # Domyślnie codziennie
+        interval = self.entry.options.get("scan_interval", "daily")
+        return ANALYSIS_INTERVAL_OPTIONS.get(interval, 1)
+
+    async def _async_sleep(self, seconds):
+        # Oddzielna metoda, by łatwo testować lub przerywać sleep
+        import asyncio
+        try:
+            await asyncio.sleep(seconds)
+        except asyncio.CancelledError:
+            pass
+
+    async def run_analysis(self):
         try:
             raw_logs = await self._get_system_logs()
             filtered_logs = self._filter_logs(
@@ -95,10 +149,10 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             await self._save_to_file(analysis, filtered_logs)
             await self._cleanup_old_reports()
-            return {"status": "success", "last_run": datetime.now().isoformat()}
+            self.data = {"status": "success", "last_run": datetime.now().isoformat(), "error": None}
         except Exception as err:
             _LOGGER.exception("Update error: %s", err)
-            return {"status": "error", "error": str(err)}
+            self.data = {"status": "error", "error": str(err), "last_run": datetime.now().isoformat()}
 
     async def _get_system_logs(self) -> str:
         log_path = Path(self.hass.config.path("home-assistant.log"))
@@ -114,15 +168,11 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return ""
 
     def _filter_logs(self, logs: str, levels: list) -> str:
-        """Filtruje logi według wybranych poziomów i loguje fragmenty do debugowania."""
         import logging
         _LOGGER = logging.getLogger(__name__)
-
         if not logs:
             _LOGGER.debug("Plik logów jest pusty.")
             return ""
-
-        # Mapowanie polskich etykiet na angielskie poziomy logowania
         level_map = {
             "DEBUG": "DEBUG",
             "INFO": "INFO",
@@ -135,21 +185,16 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "Błędy": "ERROR",
             "Krytyczne": "CRITICAL",
         }
-        # Zamień wybrane poziomy na angielskie
         mapped_levels = [level_map.get(level, level).upper() for level in levels]
-
         _LOGGER.debug("Wybrane poziomy logów (po mapowaniu): %s", mapped_levels)
         _LOGGER.debug("Fragment oryginalnych logów:\n%s", logs[:1000])
-
         filtered_lines = [
             line for line in logs.split('\n')
             if any(f" {level} " in line for level in mapped_levels)
         ]
         filtered_logs = '\n'.join(filtered_lines)
-
         _LOGGER.debug("Fragment przefiltrowanych logów:\n%s", filtered_logs[:1000])
         _LOGGER.debug("Liczba linii po filtracji: %d", len(filtered_lines))
-
         return filtered_logs
 
     async def _save_to_file(self, analysis: str, logs: str) -> None:

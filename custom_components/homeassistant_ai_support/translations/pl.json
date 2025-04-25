@@ -1,45 +1,52 @@
 {
-  "config": {
+    "config": {
       "step": {
-          "user": {
-              "title": "Konfiguracja Wsparcia AI",
-              "description": "Skonfiguruj integrację do analizy logów przy użyciu modeli AI",
-              "data": {
-                  "api_key": "Klucz API OpenAI",
-                  "scan_interval": "Interwał analizy (w godzinach)",
-                  "model": "Model AI",
-                  "system_prompt": "Prompt systemowy",
-                  "cost_optimization": "Optymalizacja kosztów",
-                  "log_levels": "Poziomy logów",
-                  "max_reports": "Maksymalna liczba raportów",
-                  "diagnostic_integration": "Integracja diagnostyczna"
-              }
+        "user": {
+          "title": "Konfiguracja Wsparcia AI",
+          "description": "Skonfiguruj integrację do analizy logów przy użyciu modeli AI",
+          "data": {
+            "api_key": "Klucz API OpenAI",
+            "scan_interval": "Interwał analizy",
+            "model": "Model AI",
+            "system_prompt": "Prompt systemowy",
+            "cost_optimization": "Optymalizacja kosztów",
+            "log_levels": "Poziomy logów",
+            "max_reports": "Maksymalna liczba raportów",
+            "diagnostic_integration": "Integracja diagnostyczna"
+          },
+          "error": {
+            "invalid_api_key": "Nieprawidłowy klucz API (musi zaczynać się od 'sk-' i mieć co najmniej 32 znaki)",
+            "connection": "Błąd połączenia z API OpenAI",
+            "unknown": "Nieznany błąd"
+          },
+          "abort": {
+            "already_configured": "Integracja jest już skonfigurowana"
           }
-      },
-      "error": {
-          "invalid_api_key": "Nieprawidłowy klucz API (musi zaczynać się od 'sk-' i mieć co najmniej 32 znaki)",
-          "connection": "Błąd połączenia z API OpenAI",
-          "unknown": "Nieznany błąd"
-      },
-      "abort": {
-          "already_configured": "Integracja jest już skonfigurowana"
-      }
-  },
-  "options": {
-      "step": {
-          "init": {
+        },
+        "options": {
+          "step": {
+            "init": {
               "title": "Aktualizuj ustawienia Wsparcia AI",
               "data": {
-                  "api_key": "Klucz API",
-                  "model": "Model AI",
-                  "system_prompt": "Prompt systemowy",
-                  "scan_interval": "Interwał analizy (w godzinach)",
-                  "cost_optimization": "Optymalizacja kosztów",
-                  "log_levels": "Poziomy logów",
-                  "max_reports": "Maksymalna liczba raportów",
-                  "diagnostic_integration": "Integracja diagnostyczna"
+                "api_key": "Klucz API",
+                "model": "Model AI",
+                "system_prompt": "Prompt systemowy",
+                "scan_interval": "Interwał analizy",
+                "cost_optimization": "Optymalizacja kosztów",
+                "log_levels": "Poziomy logów",
+                "max_reports": "Maksymalna liczba raportów",
+                "diagnostic_integration": "Integracja diagnostyczna"
               }
+            }
           }
+        }
+      },
+      "scan_interval": {
+        "daily": "Codziennie",
+        "every_2_days": "Co 2 dni",
+        "every_7_days": "Co 7 dni",
+        "every_30_days": "Co 30 dni"
       }
+    }
   }
-}
+  
