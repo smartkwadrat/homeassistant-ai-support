@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import logging
-import os
 import json
-from datetime import datetime, timedelta, time as dt_time
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +21,7 @@ from .const import (
     CONF_LOG_LEVELS,
     CONF_MAX_REPORTS,
     CONF_DIAGNOSTIC_INTEGRATION,
+    CONF_SCAN_INTERVAL,
     DOMAIN,
     MODEL_MAPPING,
 )
@@ -46,22 +46,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         coordinator = LogAnalysisCoordinator(hass, entry)
         hass.data[DOMAIN][entry.entry_id] = coordinator
 
-        # Rejestracja platformy sensor
-        hass.async_create_task(
-            hass.config_entries.async_forward_entry_setup(entry, "sensor")
-        )
+        # Rejestracja platformy sensor (await, nie create_task!)
+        await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
 
         # Zarejestruj usługę manualnego wywołania analizy
         async def handle_analyze_now(call):
             await coordinator.run_analysis()
-
         hass.services.async_register(DOMAIN, "analyze_now", handle_analyze_now)
 
         # Zaplanuj pierwsze uruchomienie po starcie HA
         @callback
         async def schedule_analysis(event=None):
             await coordinator.schedule_periodic_analysis()
-
         hass.bus.async_listen_once("homeassistant_started", schedule_analysis)
 
         return True
@@ -93,9 +89,9 @@ class LogAnalysisCoordinator:
         self.data = {"status": "inactive", "last_run": None, "error": None}
 
     async def schedule_periodic_analysis(self):
-        # Anuluj istniejące zadanie, jeśli jest
         await self.async_stop()
-        self._task = self.hass.loop.create_task(self._periodic_analysis_loop())
+        import asyncio
+        self._task = asyncio.create_task(self._periodic_analysis_loop())
 
     async def async_stop(self):
         if self._task and not self._task.done():
@@ -107,29 +103,23 @@ class LogAnalysisCoordinator:
         self._task = None
 
     async def _periodic_analysis_loop(self):
-        # Pobierz interwał z opcji
         interval_days = self._get_interval_days()
         while True:
             now = datetime.now()
             next_run = now.replace(hour=23, minute=50, second=0, microsecond=0)
             if now >= next_run:
                 next_run += timedelta(days=1)
-            # Sprawdź, czy to pierwszy run po starcie (nie generuj od razu raportu)
             sleep_seconds = (next_run - now).total_seconds()
             await self._async_sleep(sleep_seconds)
             await self.run_analysis()
-            # Kolejne uruchomienia wg interwału
             for _ in range(interval_days - 1):
                 await self._async_sleep(24 * 3600)
-            # pętla powtarza się
 
     def _get_interval_days(self):
-        # Domyślnie codziennie
-        interval = self.entry.options.get("scan_interval", "daily")
-        return ANALYSIS_INTERVAL_OPTIONS.get(interval, 1)
+        interval = self.entry.options.get(CONF_SCAN_INTERVAL, "every_7_days")
+        return ANALYSIS_INTERVAL_OPTIONS.get(interval, 7)
 
     async def _async_sleep(self, seconds):
-        # Oddzielna metoda, by łatwo testować lub przerywać sleep
         import asyncio
         try:
             await asyncio.sleep(seconds)

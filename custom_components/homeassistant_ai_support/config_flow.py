@@ -8,6 +8,12 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.selector import (
+    TextSelector,
+    TextSelectorConfig,
+    SelectSelector,
+    SelectSelectorConfig,
+)
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_API_KEY
@@ -28,18 +34,12 @@ from .const import (
     DEFAULT_LOG_LEVELS,
     DEFAULT_MAX_REPORTS,
     DEFAULT_DIAGNOSTIC_INTEGRATION,
+    DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    SCAN_INTERVAL_OPTIONS,
 )
 
 _LOGGER = logging.getLogger(__name__)
-
-SCAN_INTERVAL_OPTIONS = {
-    "daily": "Codziennie",
-    "every_2_days": "Co 2 dni",
-    "every_7_days": "Co 7 dni",
-    "every_30_days": "Co 30 dni",
-}
-SCAN_INTERVAL_DEFAULT = "daily"
 
 async def validate_api_key_format(api_key: str) -> None:
     if not api_key.startswith("sk-") or len(api_key) < 32:
@@ -64,7 +64,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_SYSTEM_PROMPT: user_input[CONF_SYSTEM_PROMPT],
                     },
                     options={
-                        "scan_interval": user_input["scan_interval"],
+                        CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL],
                         CONF_COST_OPTIMIZATION: user_input[CONF_COST_OPTIMIZATION],
                         CONF_LOG_LEVELS: user_input[CONF_LOG_LEVELS],
                         CONF_MAX_REPORTS: user_input[CONF_MAX_REPORTS],
@@ -75,10 +75,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         data_schema = vol.Schema({
             vol.Required(CONF_API_KEY): str,
             vol.Optional(CONF_MODEL, default=DEFAULT_MODEL): vol.In(MODEL_MAPPING.keys()),
-            vol.Optional(CONF_SYSTEM_PROMPT, default=DEFAULT_SYSTEM_PROMPT): str,
             vol.Optional(
-                "scan_interval",
-                default=SCAN_INTERVAL_DEFAULT
+                CONF_SYSTEM_PROMPT,
+                default=DEFAULT_SYSTEM_PROMPT
+            ): TextSelector(TextSelectorConfig(multiline=True, rows=6)),
+            vol.Optional(
+                CONF_SCAN_INTERVAL,
+                default=DEFAULT_SCAN_INTERVAL
             ): vol.In(SCAN_INTERVAL_OPTIONS.keys()),
             vol.Optional(
                 CONF_COST_OPTIMIZATION,
@@ -135,10 +138,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_SYSTEM_PROMPT,
                     default=data.get(CONF_SYSTEM_PROMPT, DEFAULT_SYSTEM_PROMPT)
-                ): str,
+                ): TextSelector(TextSelectorConfig(multiline=True, rows=6)),
                 vol.Optional(
-                    "scan_interval",
-                    default=options.get("scan_interval", SCAN_INTERVAL_DEFAULT)
+                    CONF_SCAN_INTERVAL,
+                    default=options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
                 ): vol.In(SCAN_INTERVAL_OPTIONS.keys()),
                 vol.Optional(
                     CONF_COST_OPTIMIZATION,

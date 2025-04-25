@@ -6,14 +6,13 @@ import json
 from pathlib import Path
 
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
 
-class LogAnalysisSensor(CoordinatorEntity, SensorEntity):
+class LogAnalysisSensor(SensorEntity):
     """Reprezentacja czujnika statusu analizy logów."""
 
     _attr_icon = "mdi:clipboard-text-search"
@@ -21,7 +20,8 @@ class LogAnalysisSensor(CoordinatorEntity, SensorEntity):
     _attr_has_entity_name = True
 
     def __init__(self, coordinator) -> None:
-        super().__init__(coordinator)
+        super().__init__()
+        self._coordinator = coordinator
         self._attr_name = "Status analizy logów"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, "ai_support")},
@@ -32,13 +32,12 @@ class LogAnalysisSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self) -> str:
         """Zwraca aktualny status analizy."""
-        return self.coordinator.data.get("status", "inactive")
+        return self._coordinator.data.get("status", "inactive")
 
     @property
     def extra_state_attributes(self) -> dict:
         """Dodatkowe atrybuty czujnika, w tym najnowszy raport."""
-        # Wczytaj najnowszy raport z katalogu ai_reports
-        report_dir = Path(self.coordinator.hass.config.path("ai_reports"))
+        report_dir = Path(self._coordinator.hass.config.path("ai_reports"))
         latest_report = {}
         if report_dir.exists():
             report_files = sorted(
@@ -52,10 +51,9 @@ class LogAnalysisSensor(CoordinatorEntity, SensorEntity):
                         latest_report = json.load(f)
                 except Exception:
                     latest_report = {}
-
         return {
-            "last_run": self.coordinator.data.get("last_run"),
-            "error": self.coordinator.data.get("error"),
+            "last_run": self._coordinator.data.get("last_run"),
+            "error": self._coordinator.data.get("error"),
             "report": latest_report.get("report", ""),
             "timestamp": latest_report.get("timestamp", ""),
             "log_snippet": latest_report.get("log_snippet", "")
