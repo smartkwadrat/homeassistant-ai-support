@@ -4,40 +4,32 @@ from __future__ import annotations
 
 import logging
 import json
+import aiofiles
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.helpers.typing import ConfigType
 
 from .const import (
     CONF_API_KEY,
     CONF_MODEL,
     CONF_COST_OPTIMIZATION,
-    CONF_SYSTEM_PROMPT,
     CONF_LOG_LEVELS,
     CONF_MAX_REPORTS,
     CONF_DIAGNOSTIC_INTEGRATION,
     CONF_SCAN_INTERVAL,
     DOMAIN,
     MODEL_MAPPING,
+    ANALYSIS_INTERVAL_OPTIONS,
 )
-
 from .openai_handler import OpenAIAnalyzer
 
 _LOGGER = logging.getLogger(__name__)
 
-ANALYSIS_INTERVAL_OPTIONS = {
-    "daily": 1,
-    "every_2_days": 2,
-    "every_7_days": 7,
-    "every_30_days": 30,
-}
-
-async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.data.setdefault(DOMAIN, {})
     return True
 
@@ -46,33 +38,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         coordinator = LogAnalysisCoordinator(hass, entry)
         hass.data[DOMAIN][entry.entry_id] = coordinator
 
-        # Rejestracja platformy sensor (await, nie create_task!)
-        await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
+        await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "diagnostic"])
 
-        # Zarejestruj usługę manualnego wywołania analizy
         async def handle_analyze_now(call):
             await coordinator.run_analysis()
         hass.services.async_register(DOMAIN, "analyze_now", handle_analyze_now)
 
-        # Zaplanuj pierwsze uruchomienie po starcie HA
         @callback
         async def schedule_analysis(event=None):
             await coordinator.schedule_periodic_analysis()
         hass.bus.async_listen_once("homeassistant_started", schedule_analysis)
 
         return True
-
     except Exception as err:
         _LOGGER.error("Setup error: %s", err, exc_info=True)
         raise ConfigEntryNotReady from err
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor"])
-    if unload_ok:
-        if entry.entry_id in hass.data[DOMAIN]:
-            coordinator = hass.data[DOMAIN].pop(entry.entry_id)
-            await coordinator.analyzer.close()
-            await coordinator.async_stop()
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor", "diagnostic"])
+    
+    if unload_ok and entry.entry_id in hass.data[DOMAIN]:
+        coordinator = hass.data[DOMAIN].pop(entry.entry_id)
+        await coordinator.analyzer.close()
+        await coordinator.async_stop()
+    
     return unload_ok
 
 class LogAnalysisCoordinator:
@@ -87,11 +76,13 @@ class LogAnalysisCoordinator:
         )
         self._task = None
         self.data = {"status": "inactive", "last_run": None, "error": None}
+        self.sensor_instance = None
 
     async def schedule_periodic_analysis(self):
         await self.async_stop()
-        import asyncio
-        self._task = asyncio.create_task(self._periodic_analysis_loop())
+        self._task = self.hass.async_create_background_task(
+            self._periodic_analysis_loop(), "AI Support Analysis Loop"
+        )
 
     async def async_stop(self):
         if self._task and not self._task.done():
@@ -109,22 +100,20 @@ class LogAnalysisCoordinator:
             next_run = now.replace(hour=23, minute=50, second=0, microsecond=0)
             if now >= next_run:
                 next_run += timedelta(days=1)
-            sleep_seconds = (next_run - now).total_seconds()
-            await self._async_sleep(sleep_seconds)
+            
+            await self._async_sleep((next_run - now).total_seconds())
             await self.run_analysis()
+            
             for _ in range(interval_days - 1):
-                await self._async_sleep(24 * 3600)
+                await self._async_sleep(86400)  # 24h
 
     def _get_interval_days(self):
-        interval = self.entry.options.get(CONF_SCAN_INTERVAL, "every_7_days")
-        return ANALYSIS_INTERVAL_OPTIONS.get(interval, 7)
+        return ANALYSIS_INTERVAL_OPTIONS.get(
+            self.entry.options.get(CONF_SCAN_INTERVAL, "every_7_days"), 7
+        )
 
-    async def _async_sleep(self, seconds):
-        import asyncio
-        try:
-            await asyncio.sleep(seconds)
-        except asyncio.CancelledError:
-            pass
+    async def _async_sleep(self, seconds: float):
+        await asyncio.sleep(seconds)
 
     async def run_analysis(self):
         try:
@@ -133,99 +122,87 @@ class LogAnalysisCoordinator:
                 raw_logs,
                 self.entry.options.get(CONF_LOG_LEVELS, ["ERROR", "WARNING"])
             )
+            
             analysis = await self.analyzer.analyze_logs(
                 filtered_logs,
                 self.entry.options.get(CONF_COST_OPTIMIZATION, False)
             )
+            
             await self._save_to_file(analysis, filtered_logs)
             await self._cleanup_old_reports()
-            self.data = {"status": "success", "last_run": datetime.now().isoformat(), "error": None}
+            
+            self.data = {
+                "status": "success",
+                "last_run": datetime.now().isoformat(),
+                "error": None
+            }
+            
+            if self.sensor_instance:
+                await self.sensor_instance._async_load_latest_report()
+                self.sensor_instance.async_write_ha_state()
+                
         except Exception as err:
             _LOGGER.exception("Update error: %s", err)
-            self.data = {"status": "error", "error": str(err), "last_run": datetime.now().isoformat()}
+            self.data = {
+                "status": "error",
+                "error": str(err),
+                "last_run": datetime.now().isoformat()
+            }
 
     async def _get_system_logs(self) -> str:
         log_path = Path(self.hass.config.path("home-assistant.log"))
         try:
-            content = await self.hass.async_add_executor_job(
-                lambda: log_path.read_text(encoding="utf-8") if log_path.exists() else ""
-            )
-            if not content:
-                _LOGGER.warning("Plik logów jest pusty lub nie istnieje: %s", log_path)
-            return content
+            async with aiofiles.open(log_path, "r", encoding="utf-8") as f:
+                content = await f.read()
+                return content[-500000:]  # Limit to 500KB
         except Exception as err:
-            _LOGGER.error("Błąd odczytu logów: %s", err)
+            _LOGGER.error("Log read error: %s", err)
             return ""
 
     def _filter_logs(self, logs: str, levels: list) -> str:
-        import logging
-        _LOGGER = logging.getLogger(__name__)
-        if not logs:
-            _LOGGER.debug("Plik logów jest pusty.")
-            return ""
         level_map = {
             "DEBUG": "DEBUG",
             "INFO": "INFO",
             "WARNING": "WARNING",
             "ERROR": "ERROR",
-            "CRITICAL": "CRITICAL",
-            "Debug": "DEBUG",
-            "Informacyjne": "INFO",
-            "Ostrzeżenia": "WARNING",
-            "Błędy": "ERROR",
-            "Krytyczne": "CRITICAL",
+            "CRITICAL": "CRITICAL"
         }
         mapped_levels = [level_map.get(level, level).upper() for level in levels]
-        _LOGGER.debug("Wybrane poziomy logów (po mapowaniu): %s", mapped_levels)
-        _LOGGER.debug("Fragment oryginalnych logów:\n%s", logs[:1000])
-        filtered_lines = [
+        return '\n'.join([
             line for line in logs.split('\n')
             if any(f" {level} " in line for level in mapped_levels)
-        ]
-        filtered_logs = '\n'.join(filtered_lines)
-        _LOGGER.debug("Fragment przefiltrowanych logów:\n%s", filtered_logs[:1000])
-        _LOGGER.debug("Liczba linii po filtracji: %d", len(filtered_lines))
-        return filtered_logs
+        ])
 
     async def _save_to_file(self, analysis: str, logs: str) -> None:
         report_dir = Path(self.hass.config.path("ai_reports"))
-        await self.hass.async_add_executor_job(
-            lambda: report_dir.mkdir(exist_ok=True)
-        )
+        await self.hass.async_add_executor_job(report_dir.mkdir, exist_ok=True)
+        
         filename = f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         report_path = report_dir / filename
+        
         data = {
             "timestamp": datetime.now().isoformat(),
             "report": analysis,
             "log_snippet": logs[-5000:] if len(logs) > 5000 else logs
         }
-        await self.hass.async_add_executor_job(
-            lambda: report_path.write_text(
-                json.dumps(data, indent=2, ensure_ascii=False),
-                encoding="utf-8"
-            )
-        )
-        _LOGGER.info("Zapisano raport do pliku: %s", report_path)
+        
+        async with aiofiles.open(report_path, "w", encoding="utf-8") as f:
+            await f.write(json.dumps(data, indent=2, ensure_ascii=False))
+        
+        _LOGGER.info("Saved report to: %s", report_path)
 
     async def _cleanup_old_reports(self) -> None:
         max_reports = self.entry.options.get(CONF_MAX_REPORTS, 10)
         report_dir = Path(self.hass.config.path("ai_reports"))
-        exists = await self.hass.async_add_executor_job(
-            lambda: report_dir.exists()
-        )
-        if not exists:
+        
+        if not await self.hass.async_add_executor_job(report_dir.exists):
             return
+            
         files = await self.hass.async_add_executor_job(
-            lambda: [f for f in report_dir.iterdir() if f.is_file() and f.name.endswith('.json')]
+            lambda: sorted(report_dir.glob("report_*.json"), key=lambda f: f.stat().st_ctime)
         )
-        if len(files) <= max_reports:
-            return
-        files_with_time = await self.hass.async_add_executor_job(
-            lambda: [(f, f.stat().st_ctime) for f in files]
-        )
-        files_with_time.sort(key=lambda x: x[1])
-        for old_file, _ in files_with_time[:-max_reports]:
-            await self.hass.async_add_executor_job(
-                lambda f=old_file: f.unlink()
-            )
-            _LOGGER.debug("Usunięto stary raport: %s", old_file)
+        
+        if len(files) > max_reports:
+            for old_file in files[:-max_reports]:
+                await self.hass.async_add_executor_job(old_file.unlink)
+                _LOGGER.debug("Removed old report: %s", old_file)

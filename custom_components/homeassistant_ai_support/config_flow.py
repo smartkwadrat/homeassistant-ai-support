@@ -6,19 +6,13 @@ import logging
 from typing import Any
 
 import voluptuous as vol
-
-from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers.selector import (
-    TextSelector,
-    TextSelectorConfig,
-    SelectSelector,
-    SelectSelectorConfig,
-)
+from openai import AsyncOpenAI, AuthenticationError
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_API_KEY
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers import config_validation as cv
 
 from .const import (
     CONF_MODEL,
@@ -27,6 +21,7 @@ from .const import (
     CONF_LOG_LEVELS,
     CONF_MAX_REPORTS,
     CONF_DIAGNOSTIC_INTEGRATION,
+    CONF_SCAN_INTERVAL,
     MODEL_MAPPING,
     DEFAULT_MODEL,
     DEFAULT_COST_OPTIMIZATION,
@@ -41,18 +36,26 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-async def validate_api_key_format(api_key: str) -> None:
+async def validate_api_key(api_key: str) -> None:
+    """Validate OpenAI API key format and functionality."""
     if not api_key.startswith("sk-") or len(api_key) < 32:
         raise ValueError("invalid_api_key")
+    
+    async with AsyncOpenAI(api_key=api_key) as client:
+        try:
+            await client.models.list(timeout=5.0)
+        except AuthenticationError:
+            raise ValueError("invalid_api_key")
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         errors = {}
+        
         if user_input is not None:
             try:
-                await validate_api_key_format(user_input[CONF_API_KEY])
+                await validate_api_key(user_input[CONF_API_KEY])
             except ValueError as err:
                 errors["base"] = str(err)
             else:
@@ -72,40 +75,25 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     },
                 )
 
+        prompt_default = f"{DEFAULT_SYSTEM_PROMPT}\n\n\n\n\n\n"
+        
         data_schema = vol.Schema({
             vol.Required(CONF_API_KEY): str,
             vol.Optional(CONF_MODEL, default=DEFAULT_MODEL): vol.In(MODEL_MAPPING.keys()),
-            vol.Optional(
-                CONF_SYSTEM_PROMPT,
-                default=DEFAULT_SYSTEM_PROMPT
-            ): TextSelector(TextSelectorConfig(multiline=True, rows=6)),
-            vol.Optional(
-                CONF_SCAN_INTERVAL,
-                default=DEFAULT_SCAN_INTERVAL
-            ): vol.In(SCAN_INTERVAL_OPTIONS.keys()),
-            vol.Optional(
-                CONF_COST_OPTIMIZATION,
-                default=DEFAULT_COST_OPTIMIZATION
-            ): bool,
-            vol.Optional(
-                CONF_LOG_LEVELS,
-                default=DEFAULT_LOG_LEVELS
-            ): cv.multi_select({
+            vol.Optional(CONF_SYSTEM_PROMPT, default=prompt_default): str,
+            vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): vol.In(SCAN_INTERVAL_OPTIONS.keys()),
+            vol.Optional(CONF_COST_OPTIMIZATION, default=DEFAULT_COST_OPTIMIZATION): bool,
+            vol.Optional(CONF_LOG_LEVELS, default=DEFAULT_LOG_LEVELS): cv.multi_select({
                 "DEBUG": "Debug",
-                "INFO": "Informacyjne",
-                "WARNING": "Ostrzeżenia",
-                "ERROR": "Błędy",
-                "CRITICAL": "Krytyczne"
+                "INFO": "Info",
+                "WARNING": "Warning",
+                "ERROR": "Error",
+                "CRITICAL": "Critical"
             }),
-            vol.Optional(
-                CONF_MAX_REPORTS,
-                default=DEFAULT_MAX_REPORTS
-            ): vol.All(vol.Coerce(int), vol.Range(min=3, max=30)),
-            vol.Optional(
-                CONF_DIAGNOSTIC_INTEGRATION,
-                default=DEFAULT_DIAGNOSTIC_INTEGRATION
-            ): bool,
+            vol.Optional(CONF_MAX_REPORTS, default=DEFAULT_MAX_REPORTS): vol.All(vol.Coerce(int), vol.Range(min=3, max=30)),
+            vol.Optional(CONF_DIAGNOSTIC_INTEGRATION, default=DEFAULT_DIAGNOSTIC_INTEGRATION): bool,
         })
+
         return self.async_show_form(step_id="user", data_schema=data_schema, errors=errors)
 
     @staticmethod
@@ -123,47 +111,24 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
         options = self._config_entry.options
         data = self._config_entry.data
+        prompt_default = f"{data.get(CONF_SYSTEM_PROMPT, DEFAULT_SYSTEM_PROMPT)}\n\n\n\n\n\n"
 
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
-                vol.Required(
-                    CONF_API_KEY,
-                    default=data.get(CONF_API_KEY, "")
-                ): str,
-                vol.Optional(
-                    CONF_MODEL,
-                    default=data.get(CONF_MODEL, DEFAULT_MODEL)
-                ): vol.In(MODEL_MAPPING.keys()),
-                vol.Optional(
-                    CONF_SYSTEM_PROMPT,
-                    default=data.get(CONF_SYSTEM_PROMPT, DEFAULT_SYSTEM_PROMPT)
-                ): TextSelector(TextSelectorConfig(multiline=True, rows=6)),
-                vol.Optional(
-                    CONF_SCAN_INTERVAL,
-                    default=options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-                ): vol.In(SCAN_INTERVAL_OPTIONS.keys()),
-                vol.Optional(
-                    CONF_COST_OPTIMIZATION,
-                    default=options.get(CONF_COST_OPTIMIZATION, DEFAULT_COST_OPTIMIZATION)
-                ): bool,
-                vol.Optional(
-                    CONF_LOG_LEVELS,
-                    default=options.get(CONF_LOG_LEVELS, DEFAULT_LOG_LEVELS)
-                ): cv.multi_select({
+                vol.Required(CONF_API_KEY, default=data.get(CONF_API_KEY, "")): str,
+                vol.Optional(CONF_MODEL, default=data.get(CONF_MODEL, DEFAULT_MODEL)): vol.In(MODEL_MAPPING.keys()),
+                vol.Optional(CONF_SYSTEM_PROMPT, default=prompt_default): str,
+                vol.Optional(CONF_SCAN_INTERVAL, default=options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)): vol.In(SCAN_INTERVAL_OPTIONS.keys()),
+                vol.Optional(CONF_COST_OPTIMIZATION, default=options.get(CONF_COST_OPTIMIZATION, DEFAULT_COST_OPTIMIZATION)): bool,
+                vol.Optional(CONF_LOG_LEVELS, default=options.get(CONF_LOG_LEVELS, DEFAULT_LOG_LEVELS)): cv.multi_select({
                     "DEBUG": "Debug",
-                    "INFO": "Informacyjne",
-                    "WARNING": "Ostrzeżenia",
-                    "ERROR": "Błędy",
-                    "CRITICAL": "Krytyczne"
+                    "INFO": "Info",
+                    "WARNING": "Warning",
+                    "ERROR": "Error",
+                    "CRITICAL": "Critical"
                 }),
-                vol.Optional(
-                    CONF_MAX_REPORTS,
-                    default=options.get(CONF_MAX_REPORTS, DEFAULT_MAX_REPORTS)
-                ): vol.All(vol.Coerce(int), vol.Range(min=3, max=30)),
-                vol.Optional(
-                    CONF_DIAGNOSTIC_INTEGRATION,
-                    default=options.get(CONF_DIAGNOSTIC_INTEGRATION, DEFAULT_DIAGNOSTIC_INTEGRATION)
-                ): bool,
+                vol.Optional(CONF_MAX_REPORTS, default=options.get(CONF_MAX_REPORTS, DEFAULT_MAX_REPORTS)): vol.All(vol.Coerce(int), vol.Range(min=3, max=30)),
+                vol.Optional(CONF_DIAGNOSTIC_INTEGRATION, default=options.get(CONF_DIAGNOSTIC_INTEGRATION, DEFAULT_DIAGNOSTIC_INTEGRATION)): bool,
             })
         )
