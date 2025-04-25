@@ -40,7 +40,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         coordinator = LogAnalysisCoordinator(hass, entry)
         hass.data[DOMAIN][entry.entry_id] = coordinator
 
-        await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "diagnostic"])
+        await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "diagnostics"])
 
         async def handle_analyze_now(call):
             await coordinator.run_analysis()
@@ -62,7 +62,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise ConfigEntryNotReady from err
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor", "diagnostic"])
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor", "diagnostics"])
     
     if unload_ok and entry.entry_id in hass.data[DOMAIN]:
         coordinator = hass.data[DOMAIN].pop(entry.entry_id)

@@ -1,51 +1,70 @@
 {
   "config": {
-    "step": {
-      "user": {
-        "title": "AI Support Configuration",
-        "description": "Configure integration for log analysis using AI models",
-        "data": {
-          "api_key": "OpenAI API Key",
-          "scan_interval": "Analysis Interval",
-          "model": "AI Model",
-          "system_prompt": "System Prompt",
-          "cost_optimization": "Cost Optimization",
-          "log_levels": "Log Levels",
-          "max_reports": "Max Stored Reports",
-          "diagnostic_integration": "Enable Diagnostic Integration"
-        },
-        "error": {
+      "step": {
+          "user": {
+              "title": "AI Support Configuration",
+              "description": "Configure integration for log analysis using AI models",
+              "data": {
+                  "api_key": "OpenAI API Key",
+                  "scan_interval": "Analysis Interval",
+                  "model": "AI Model",
+                  "system_prompt": "System Prompt",
+                  "cost_optimization": "Cost Optimization",
+                  "log_levels": "Log Levels",
+                  "max_reports": "Max Stored Reports",
+                  "diagnostic_integration": "Enable Diagnostic Integration"
+              }
+          }
+      },
+      "error": {
           "connection_error": "Connection error with OpenAI API",
           "invalid_api_key_format": "Invalid API Key (must start with 'sk-' and be at least 32 characters)",
           "invalid_api_key_auth": "Authentication failed"
-        },
-        "abort": {
-          "already_configured": "Integration is already configured"
-        }
+      },
+      "abort": {
+          "already_configured": "Integration is already configured",
+          "configuration_success": "API key correct. Configuration success."
+      },
+      "exceptions": {
+          "config_entry_not_ready": "Connection error"
       },
       "options": {
-        "step": {
-          "init": {
-            "title": "Update AI Support Settings",
-            "data": {
-              "api_key": "API Key",
-              "model": "AI Model",
-              "system_prompt": "System Prompt",
-              "scan_interval": "Analysis Interval",
-              "cost_optimization": "Cost Optimization",
-              "log_levels": "Log Levels",
-              "max_reports": "Max Stored Reports",
-              "diagnostic_integration": "Enable Diagnostic Integration"
-            }
+          "step": {
+              "init": {
+                  "title": "Update AI Support Settings",
+                  "data": {
+                      "api_key": "API Key",
+                      "model": "AI Model",
+                      "system_prompt": "System Prompt",
+                      "scan_interval": "Analysis Interval",
+                      "cost_optimization": "Cost Optimization",
+                      "log_levels": "Log Levels",
+                      "max_reports": "Max Stored Reports",
+                      "diagnostic_integration": "Enable Diagnostic Integration"
+                  }
+              }
           }
-        }
+      },
+      "scan_interval": {
+          "daily": "Daily",
+          "every_2_days": "Every 2 days",
+          "every_7_days": "Every 7 days",
+          "every_30_days": "Every 30 days"
       }
-    },
-    "scan_interval": {
-      "daily": "Daily",
-      "every_2_days": "Every 2 days",
-      "every_7_days": "Every 7 days",
-      "every_30_days": "Every 30 days"
-    }
+  },
+  "diagnostics": {
+      "title": "AI Support Diagnostics",
+      "description": "Diagnostics report containing configuration details and analysis history",
+      "fields": {
+          "version": "Config Entry Version",
+          "options": "Current Options",
+          "data": "Configuration Data",
+          "reports_count": "Stored Reports",
+          "last_report": "Latest Report Content"
+      },
+      "errors": {
+          "no_reports": "No reports available",
+          "load_error": "Error loading report: {error}"
+      }
   }
 }

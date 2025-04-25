@@ -1,54 +1,70 @@
 {
   "config": {
-    "step": {
-      "user": {
-        "title": "Konfiguracja Wsparcia AI",
-        "description": "Skonfiguruj integrację do analizy logów przy użyciu modeli AI",
-        "data": {
-          "api_key": "Klucz API OpenAI",
-          "scan_interval": "Interwał analizy",
-          "model": "Model AI",
-          "system_prompt": "Prompt systemowy",
-          "cost_optimization": "Optymalizacja kosztów",
-          "log_levels": "Poziomy logów",
-          "max_reports": "Maksymalna liczba raportów",
-          "diagnostic_integration": "Integracja diagnostyczna"
-        },
-        "error": {
-            "invalid_api_key_format": "Nieprawidłowy format klucza API (musi zaczynać się od 'sk-' i mieć co najmniej 32 znaki)",
-            "invalid_api_key_auth": "Błąd autentykacji - nieprawidłowy klucz API",
-            "connection_error": "Błąd połączenia z siecią"
-        },
-        "abort": {
-            "configuration_success": "Klucz poprawny. Konfiguracja powiodła się"
-        }
-    },
-      "exceptions": {
-        "config_entry_not_ready": "Błąd połączenia z siecią"
-    },
-      "options": {
-        "step": {
-          "init": {
-            "title": "Aktualizuj ustawienia Wsparcia AI",
-            "data": {
-              "api_key": "Klucz API",
-              "model": "Model AI",
-              "system_prompt": "Prompt systemowy",
-              "scan_interval": "Interwał analizy",
-              "cost_optimization": "Optymalizacja kosztów",
-              "log_levels": "Poziomy logów",
-              "max_reports": "Maksymalna liczba raportów",
-              "diagnostic_integration": "Integracja diagnostyczna"
-            }
+      "step": {
+          "user": {
+              "title": "Konfiguracja Wsparcia AI",
+              "description": "Skonfiguruj integrację do analizy logów przy użyciu modeli AI",
+              "data": {
+                  "api_key": "Klucz API OpenAI",
+                  "scan_interval": "Interwał analizy",
+                  "model": "Model AI",
+                  "system_prompt": "Prompt systemowy",
+                  "cost_optimization": "Optymalizacja kosztów",
+                  "log_levels": "Poziomy logów",
+                  "max_reports": "Maksymalna liczba raportów",
+                  "diagnostic_integration": "Integracja diagnostyczna"
+              }
           }
-        }
+      },
+      "error": {
+          "connection_error": "Błąd połączenia z OpenAI API",
+          "invalid_api_key_format": "Nieprawidłowy format klucza (musi zaczynać się od 'sk-' i mieć min. 32 znaki)",
+          "invalid_api_key_auth": "Błąd autentykacji"
+      },
+      "abort": {
+          "already_configured": "Integracja jest już skonfigurowana",
+          "configuration_success": "Klucz poprawny. Konfiguracja powiodła się"
+      },
+      "exceptions": {
+          "config_entry_not_ready": "Błąd połączenia"
+      },
+      "options": {
+          "step": {
+              "init": {
+                  "title": "Aktualizacja ustawień Wsparcia AI",
+                  "data": {
+                      "api_key": "Klucz API",
+                      "model": "Model AI",
+                      "system_prompt": "Prompt systemowy",
+                      "scan_interval": "Interwał analizy",
+                      "cost_optimization": "Optymalizacja kosztów",
+                      "log_levels": "Poziomy logów",
+                      "max_reports": "Maks. liczba raportów",
+                      "diagnostic_integration": "Integracja diagnostyczna"
+                  }
+              }
+          }
+      },
+      "scan_interval": {
+          "daily": "Codziennie",
+          "every_2_days": "Co 2 dni",
+          "every_7_days": "Co 7 dni",
+          "every_30_days": "Co 30 dni"
       }
-    },
-    "scan_interval": {
-      "daily": "Codziennie",
-      "every_2_days": "Co 2 dni",
-      "every_7_days": "Co 7 dni",
-      "every_30_days": "Co 30 dni"
-    }
+  },
+  "diagnostics": {
+      "title": "Diagnostyka Wsparcia AI",
+      "description": "Raport diagnostyczny zawierający konfigurację i historię analiz",
+      "fields": {
+          "version": "Wersja konfiguracji",
+          "options": "Aktualne opcje",
+          "data": "Dane konfiguracyjne",
+          "reports_count": "Zapisane raporty",
+          "last_report": "Treść ostatniego raportu"
+      },
+      "errors": {
+          "no_reports": "Brak dostępnych raportów",
+          "load_error": "Błąd ładowania raportu: {error}"
+      }
   }
 }
