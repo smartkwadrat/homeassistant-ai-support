@@ -23,8 +23,6 @@ class LogAnalysisSensor(SensorEntity):
     _attr_has_entity_name = True
     _attr_unique_id = "homeassistant_ai_support_status"
     _attr_icon = "mdi:clipboard-text-search"
-    _attr_native_unit_of_measurement = "report"
-    _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = ["success", "error", "inactive"]
 
