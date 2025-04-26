@@ -4,84 +4,64 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import aiofiles
 
-from homeassistant.components.sensor import (
-    SensorEntity,
-    SensorDeviceClass,
-    SensorStateClass,
-)
+from homeassistant.components.sensor import SensorEntity
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
 
 from .const import DOMAIN
 
-class LogAnalysisSensor(SensorEntity):
-    """Representation of log analysis status sensor."""
-    
-    _attr_has_entity_name = True
-    _attr_unique_id = "homeassistant_ai_support_status"
+class LogAnalysisSensor(CoordinatorEntity, SensorEntity):
+    """Reprezentacja czujnika statusu analizy logów."""
+
     _attr_icon = "mdi:clipboard-text-search"
-    _attr_device_class = SensorDeviceClass.ENUM
-    _attr_options = ["success", "error", "inactive"]
+    _attr_unique_id = "homeassistant_ai_support_status"
+    _attr_has_entity_name = True
 
     def __init__(self, coordinator) -> None:
-        super().__init__()
-        self._coordinator = coordinator
-        self._attr_name = "Log Analysis Status"
+        super().__init__(coordinator)
+        self._attr_name = "Status analizy logów"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, "ai_support")},
             name="AI Support",
             manufacturer="Custom Integration"
         )
-        self._latest_report = {}
 
-    async def async_added_to_hass(self):
-        await self._async_load_latest_report()
+    @property
+    def native_value(self) -> str:
+        """Zwraca aktualny status analizy."""
+        return self.coordinator.data.get("status", "inactive")
 
-    async def _async_load_latest_report(self):
-        """Asynchronously load latest report."""
-        report_dir = Path(self.hass.config.path("ai_reports"))
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Dodatkowe atrybuty czujnika, w tym najnowszy raport."""
+        # Wczytaj najnowszy raport z katalogu ai_reports
+        report_dir = Path(self.coordinator.hass.config.path("ai_reports"))
         latest_report = {}
-
         if report_dir.exists():
             report_files = sorted(
                 report_dir.glob("report_*.json"),
                 key=lambda f: f.stat().st_ctime,
                 reverse=True
             )
-
             if report_files:
-                async with aiofiles.open(report_files[0], "r", encoding="utf-8") as f:
-                    content = await f.read()
-                    latest_report = json.loads(content)
+                try:
+                    with report_files[0].open(encoding="utf-8") as f:
+                        latest_report = json.load(f)
+                except Exception:
+                    latest_report = {}
 
-        self._latest_report = latest_report
-        self.async_write_ha_state()
-
-    @property
-    def native_value(self) -> str:
-        """Return current analysis status."""
-        return self._coordinator.data.get("status", "inactive")
-
-    @property
-    def extra_state_attributes(self) -> dict:
-        """Return additional sensor attributes."""
         return {
-            "last_run": self._coordinator.data.get("last_run"),
-            "error": self._coordinator.data.get("error"),
-            "report": self._latest_report.get("report", ""),
-            "timestamp": self._latest_report.get("timestamp", ""),
-            "log_snippet": self._latest_report.get("log_snippet", ""),
+            "last_run": self.coordinator.data.get("last_run"),
+            "error": self.coordinator.data.get("error"),
+            "report": latest_report.get("report", ""),
+            "timestamp": latest_report.get("timestamp", ""),
+            "log_snippet": latest_report.get("log_snippet", "")
         }
 
-async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities
-):
-    """Set up sensor platform."""
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
+    """Konfiguracja platformy sensor."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
-    sensor = LogAnalysisSensor(coordinator)
-    async_add_entities([sensor])
-    await sensor._async_load_latest_report()
-    coordinator.sensor_instance = sensor
+    async_add_entities([LogAnalysisSensor(coordinator)])

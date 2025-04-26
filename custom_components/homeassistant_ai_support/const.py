@@ -1,5 +1,4 @@
 """Constants for the Home Assistant AI Support integration."""
-
 DOMAIN = "homeassistant_ai_support"
 
 # Konfiguracja
@@ -13,7 +12,7 @@ CONF_MAX_REPORTS = "max_reports"
 CONF_DIAGNOSTIC_INTEGRATION = "diagnostic_integration"
 
 # Wartości domyślne
-DEFAULT_SCAN_INTERVAL = "every_7_days"  # domyślnie co 7 dni
+DEFAULT_SCAN_INTERVAL = 24
 DEFAULT_COST_OPTIMIZATION = False
 DEFAULT_MAX_REPORTS = 10
 DEFAULT_DIAGNOSTIC_INTEGRATION = True
@@ -27,6 +26,7 @@ MODEL_MAPPING = {
     "GPT-4o": "gpt-4o",
     "GPT-4o mini": "gpt-4o-mini"
 }
+
 MODEL_LIST = list(MODEL_MAPPING.keys())
 DEFAULT_MODEL = "GPT-4.1 mini"
 
@@ -37,10 +37,21 @@ DEFAULT_SYSTEM_PROMPT = (
     "wskazując potencjalne problemy i sugerując rozwiązania."
 )
 
-# Opcje interwału analizy
+# Dodaj nowe stałe dla interwałów analizy
+SCAN_INTERVAL_DAILY = "daily"
+SCAN_INTERVAL_2_DAYS = "2_days"
+SCAN_INTERVAL_7_DAYS = "7_days"
+SCAN_INTERVAL_30_DAYS = "30_days"
+
 SCAN_INTERVAL_OPTIONS = {
-    "daily": 1,
-    "every_2_days": 2,
-    "every_7_days": 7,
-    "every_30_days": 30
+    SCAN_INTERVAL_DAILY: 1,  # 1 dzień
+    SCAN_INTERVAL_2_DAYS: 2,  # 2 dni
+    SCAN_INTERVAL_7_DAYS: 7,  # 7 dni
+    SCAN_INTERVAL_30_DAYS: 30,  # 30 dni
 }
+
+DEFAULT_SCAN_INTERVAL = SCAN_INTERVAL_7_DAYS  # Domyślnie co 7 dni
+
+# Godzina generowania raportu (23:50)
+REPORT_GENERATION_HOUR = 23
+REPORT_GENERATION_MINUTE = 50
