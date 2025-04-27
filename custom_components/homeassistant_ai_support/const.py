@@ -1,4 +1,6 @@
 """Constants for the Home Assistant AI Support integration."""
+from homeassistant.helpers.storage import Store
+
 DOMAIN = "homeassistant_ai_support"
 
 # Konfiguracja

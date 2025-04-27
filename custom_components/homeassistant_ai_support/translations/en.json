@@ -1,51 +1,49 @@
 {
     "config": {
-        "step": {
-            "user": {
-                "title": "AI Support Configuration",
-                "description": "Configure integration for log analysis using AI models",
-                "data": {
-                    "api_key": "OpenAI API Key",
-                    "scan_interval": "Analysis Interval",
-                    "model": "AI Model",
-                    "system_prompt": "System Prompt",
-                    "cost_optimization": "Cost Optimization",
-                    "log_levels": "Log Levels",
-                    "max_reports": "Max Stored Reports",
-                    "diagnostic_integration": "Enable Diagnostic Integration"
-                }
-            }
+      "step": {
+        "user": {
+          "title": "AI Support Configuration",
+          "description": "Configure integration for log analysis using AI models",
+          "data": {
+            "api_key": "OpenAI API Key",
+            "model": "AI Model",
+            "system_prompt": "System Prompt",
+            "scan_interval": "Scan Interval",
+            "cost_optimization": "Cost Optimization",
+            "log_levels": "Log Levels",
+            "max_reports": "Maximum Reports",
+            "diagnostic_integration": "Diagnostic Integration"
+          }
         },
         "error": {
-            "invalid_api_key": "Invalid API Key (must start with 'sk-' and be at least 32 characters)",
-            "connection": "Connection error with OpenAI API",
-            "unknown": "Unknown error"
-        },
-        "abort": {
-            "already_configured": "Integration is already configured"
+          "invalid_api_key": "Invalid API key. Key should start with 'sk-' and be at least 32 characters long."
         }
+      },
+      "abort": {
+        "already_configured": "Integration is already configured"
+      }
     },
     "options": {
-        "step": {
-            "init": {
-                "title": "Update AI Support Settings",
-                "data": {
-                    "api_key": "API Key",
-                    "model": "AI Model",
-                    "system_prompt": "System Prompt",
-                    "scan_interval": "Analysis Interval",
-                    "cost_optimization": "Cost Optimization",
-                    "log_levels": "Log Levels",
-                    "max_reports": "Max Stored Reports",
-                    "diagnostic_integration": "Enable Diagnostic Integration"
-                }
-            }
+      "step": {
+        "init": {
+          "title": "Update AI Support Settings",
+          "data": {
+            "api_key": "API Key",
+            "model": "AI Model",
+            "system_prompt": "System Prompt",
+            "scan_interval": "Scan Interval",
+            "cost_optimization": "Cost Optimization",
+            "log_levels": "Log Levels",
+            "max_reports": "Maximum Reports",
+            "diagnostic_integration": "Diagnostic Integration"
+          }
         }
+      }
     },
     "selector": {
-      "scan_interval": {
+      "scan_interval_options": {
         "options": {
-          "daily": "Every day",
+          "daily": "Daily",
           "2_days": "Every 2 days",
           "7_days": "Every 7 days",
           "30_days": "Every 30 days"

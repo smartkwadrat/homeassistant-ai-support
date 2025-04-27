@@ -6,7 +6,7 @@ from typing import Any, Mapping
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import config_validation as cv, selector
 from homeassistant.helpers.selector import TemplateSelector
@@ -41,23 +41,17 @@ _LOGGER = logging.getLogger(__name__)
 STEP_USER_DATA_SCHEMA = vol.Schema({
     vol.Required(CONF_API_KEY): cv.string,
     vol.Optional(CONF_MODEL, default=DEFAULT_MODEL): vol.In(MODEL_MAPPING.keys()),
-    vol.Optional(
-        CONF_SYSTEM_PROMPT,
-        default=DEFAULT_SYSTEM_PROMPT
-    ): TemplateSelector(),
-    vol.Optional(
-        CONF_SCAN_INTERVAL,
-        default=DEFAULT_SCAN_INTERVAL
-    ): selector.SelectSelector(
+    vol.Optional(CONF_SYSTEM_PROMPT, default=DEFAULT_SYSTEM_PROMPT): TemplateSelector(),
+    vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): selector.SelectSelector(
         selector.SelectSelectorConfig(
             options=[
-                selector.SelectOptionDict(value=SCAN_INTERVAL_DAILY, label="Every day"),
-                selector.SelectOptionDict(value=SCAN_INTERVAL_2_DAYS, label="Every 2 days"),
-                selector.SelectOptionDict(value=SCAN_INTERVAL_7_DAYS, label="Every 7 days"),
-                selector.SelectOptionDict(value=SCAN_INTERVAL_30_DAYS, label="Every 30 days"),
+                selector.SelectOptionDict(value=SCAN_INTERVAL_DAILY, label="daily"),
+                selector.SelectOptionDict(value=SCAN_INTERVAL_2_DAYS, label="2_days"),
+                selector.SelectOptionDict(value=SCAN_INTERVAL_7_DAYS, label="7_days"),
+                selector.SelectOptionDict(value=SCAN_INTERVAL_30_DAYS, label="30_days"),
             ],
             mode=selector.SelectSelectorMode.DROPDOWN,
-            translation_key="scan_interval",
+            translation_key="scan_interval_options"
         )
     ),
     vol.Optional(CONF_COST_OPTIMIZATION, default=DEFAULT_COST_OPTIMIZATION): bool,
@@ -74,16 +68,15 @@ STEP_USER_DATA_SCHEMA = vol.Schema({
     vol.Optional(CONF_DIAGNOSTIC_INTEGRATION, default=DEFAULT_DIAGNOSTIC_INTEGRATION): bool,
 })
 
+
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for AI Support integration."""
-
     VERSION = 1
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         errors: dict[str, str] = {}
-
         if user_input is not None:
             api_key = user_input.get(CONF_API_KEY)
             if not api_key or not api_key.startswith("sk-") or len(api_key) < 32:
@@ -119,44 +112,48 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow for AI Support integration."""
-
     def __init__(self, config_entry: ConfigEntry) -> None:
         self.config_entry = config_entry
 
-    def _build_options_schema(self) -> dict[str, Any]:
+    def _build_options_schema(self) -> vol.Schema:
         opts: Mapping[str, Any] = self.config_entry.options or {}
-        return {
-            vol.Optional(
-                CONF_SYSTEM_PROMPT,
-                description={"suggested_value": opts.get(CONF_SYSTEM_PROMPT, DEFAULT_SYSTEM_PROMPT)},
-                default=opts.get(CONF_SYSTEM_PROMPT, DEFAULT_SYSTEM_PROMPT),
-            ): TemplateSelector(),
+        data: Mapping[str, Any] = self.config_entry.data or {}
+        
+        return vol.Schema({
+            vol.Required(
+                CONF_API_KEY,
+                default=opts.get(CONF_API_KEY, data.get(CONF_API_KEY, ""))
+            ): cv.string,
             vol.Optional(
                 CONF_MODEL,
-                default=opts.get(CONF_MODEL, DEFAULT_MODEL),
+                default=opts.get(CONF_MODEL, data.get(CONF_MODEL, DEFAULT_MODEL))
             ): vol.In(MODEL_MAPPING.keys()),
             vol.Optional(
+                CONF_SYSTEM_PROMPT,
+                default=opts.get(CONF_SYSTEM_PROMPT, data.get(CONF_SYSTEM_PROMPT, DEFAULT_SYSTEM_PROMPT))
+            ): TemplateSelector(),
+            vol.Optional(
                 CONF_SCAN_INTERVAL,
-                default=opts.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+                default=opts.get(CONF_SCAN_INTERVAL, data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=[
-                        selector.SelectOptionDict(value=SCAN_INTERVAL_DAILY, label="Every day"),
-                        selector.SelectOptionDict(value=SCAN_INTERVAL_2_DAYS, label="Every 2 days"),
-                        selector.SelectOptionDict(value=SCAN_INTERVAL_7_DAYS, label="Every 7 days"),
-                        selector.SelectOptionDict(value=SCAN_INTERVAL_30_DAYS, label="Every 30 days"),
+                        selector.SelectOptionDict(value=SCAN_INTERVAL_DAILY, label="daily"),
+                        selector.SelectOptionDict(value=SCAN_INTERVAL_2_DAYS, label="2_days"),
+                        selector.SelectOptionDict(value=SCAN_INTERVAL_7_DAYS, label="7_days"),
+                        selector.SelectOptionDict(value=SCAN_INTERVAL_30_DAYS, label="30_days"),
                     ],
                     mode=selector.SelectSelectorMode.DROPDOWN,
-                    translation_key="scan_interval",
+                    translation_key="scan_interval_options"
                 )
             ),
             vol.Optional(
                 CONF_COST_OPTIMIZATION,
-                default=opts.get(CONF_COST_OPTIMIZATION, DEFAULT_COST_OPTIMIZATION),
+                default=opts.get(CONF_COST_OPTIMIZATION, data.get(CONF_COST_OPTIMIZATION, DEFAULT_COST_OPTIMIZATION))
             ): bool,
             vol.Optional(
                 CONF_LOG_LEVELS,
-                default=opts.get(CONF_LOG_LEVELS, DEFAULT_LOG_LEVELS),
+                default=opts.get(CONF_LOG_LEVELS, data.get(CONF_LOG_LEVELS, DEFAULT_LOG_LEVELS))
             ): cv.multi_select({
                 "DEBUG": "Debug",
                 "INFO": "Informacyjne",
@@ -166,13 +163,13 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             }),
             vol.Optional(
                 CONF_MAX_REPORTS,
-                default=opts.get(CONF_MAX_REPORTS, DEFAULT_MAX_REPORTS),
+                default=opts.get(CONF_MAX_REPORTS, data.get(CONF_MAX_REPORTS, DEFAULT_MAX_REPORTS))
             ): vol.All(vol.Coerce(int), vol.Range(min=3, max=30)),
             vol.Optional(
                 CONF_DIAGNOSTIC_INTEGRATION,
-                default=opts.get(CONF_DIAGNOSTIC_INTEGRATION, DEFAULT_DIAGNOSTIC_INTEGRATION),
+                default=opts.get(CONF_DIAGNOSTIC_INTEGRATION, data.get(CONF_DIAGNOSTIC_INTEGRATION, DEFAULT_DIAGNOSTIC_INTEGRATION))
             ): bool,
-        }
+        })
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -183,5 +180,5 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         schema = self._build_options_schema()
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema(schema),
+            data_schema=schema,
         )
