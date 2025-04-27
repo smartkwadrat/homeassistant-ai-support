@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from datetime import datetime
+import zoneinfo
 
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -32,11 +33,15 @@ class LogAnalysisSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self) -> str:
         """Zwraca aktualny status analizy."""
-        return self.coordinator.data.get("status", "inactive")
+        status = self.coordinator.data.get("status", "inactive")
+        status_description = self.coordinator.data.get("status_description", "")
+        if status_description:
+            return f"{status}: {status_description}"
+        return status
 
     @property
     def extra_state_attributes(self) -> dict:
-        """Dodatkowe atrybuty czujnika, w tym najnowszy raport."""
+        """Dodatkowe atrybuty czujnika."""
         # Wczytaj najnowszy raport z katalogu ai_reports
         report_dir = Path(self.coordinator.hass.config.path("ai_reports"))
         latest_report = {}
@@ -55,13 +60,30 @@ class LogAnalysisSensor(CoordinatorEntity, SensorEntity):
                 except Exception:
                     latest_report = {}
 
-        return {
+        attrs = {
             "last_run": self.coordinator.data.get("last_run"),
+            "next_scheduled_run": self.coordinator.data.get("next_scheduled_run"),
+            "status": self.coordinator.data.get("status"),
+            "status_description": self.coordinator.data.get("status_description"),
+            "progress": self.coordinator.data.get("progress", 0),
             "error": self.coordinator.data.get("error"),
             "report": latest_report.get("report", ""),
             "timestamp": latest_report.get("timestamp", ""),
-            "log_snippet": latest_report.get("log_snippet", "")
         }
+        
+        # Jeśli raport jest generowany, dodaj informację o tym, jak długo trwa proces
+        if self.coordinator.data.get("status") in ["generating", "reading_logs", "filtering_logs", "analyzing", "saving"]:
+            last_update = self.coordinator.data.get("last_update")
+            if last_update:
+                try:
+                    start_time = datetime.fromisoformat(last_update)
+                    now = datetime.now(tz=start_time.tzinfo)
+                    duration = now - start_time
+                    attrs["duration"] = f"{int(duration.total_seconds())} sekund"
+                except Exception:
+                    pass
+                    
+        return attrs
 
 class LastReportTimeSensor(CoordinatorEntity, SensorEntity):
     """Reprezentacja czujnika czasu ostatniego raportu."""
@@ -80,8 +102,8 @@ class LastReportTimeSensor(CoordinatorEntity, SensorEntity):
         )
     
     @property
-    def native_value(self) -> str:
-        """Zwraca czas ostatniego raportu."""
+    def native_value(self):
+        """Zwraca czas ostatniego raportu jako obiekt datetime."""
         # Wczytaj najnowszy raport z katalogu ai_reports
         report_dir = Path(self.coordinator.hass.config.path("ai_reports"))
         
@@ -96,9 +118,17 @@ class LastReportTimeSensor(CoordinatorEntity, SensorEntity):
                 try:
                     with report_files[0].open(encoding="utf-8") as f:
                         data = json.load(f)
-                        return data.get("timestamp", None)
-                except Exception:
-                    pass
+                        timestamp_str = data.get("timestamp")
+                        if timestamp_str:
+                            # Konwertuj string ISO na obiekt datetime ze strefą czasową
+                            dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                            # Dodaj informację o strefie czasowej, jeśli jej nie ma
+                            if dt.tzinfo is None:
+                                local_tz = self.coordinator.hass.config.time_zone
+                                dt = dt.replace(tzinfo=zoneinfo.ZoneInfo(local_tz))
+                            return dt
+                except Exception as e:
+                    self.coordinator.logger.error(f"Błąd odczytu czasu ostatniego raportu: {e}")
         
         return None
 
@@ -119,9 +149,22 @@ class NextReportTimeSensor(CoordinatorEntity, SensorEntity):
         )
     
     @property
-    def native_value(self) -> str:
-        """Zwraca zaplanowany czas następnego raportu."""
-        return self.coordinator.data.get("next_scheduled_run", None)
+    def native_value(self):
+        """Zwraca zaplanowany czas następnego raportu jako obiekt datetime."""
+        next_run_str = self.coordinator.data.get("next_scheduled_run")
+        if next_run_str:
+            try:
+                # Konwertuj string ISO na obiekt datetime ze strefą czasową
+                dt = datetime.fromisoformat(next_run_str.replace('Z', '+00:00'))
+                # Dodaj informację o strefie czasowej, jeśli jej nie ma
+                if dt.tzinfo is None:
+                    local_tz = self.coordinator.hass.config.time_zone
+                    dt = dt.replace(tzinfo=zoneinfo.ZoneInfo(local_tz))
+                return dt
+            except Exception as e:
+                self.coordinator.logger.error(f"Błąd konwersji czasu następnego raportu: {e}")
+        
+        return None
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
     """Konfiguracja platformy sensor."""

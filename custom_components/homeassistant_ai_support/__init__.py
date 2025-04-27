@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 import asyncio
+import zoneinfo
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -58,13 +59,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         
         hass.data[DOMAIN][entry.entry_id] = coordinator
         
-        # Rejestracja platform
-        hass.async_create_task(
-            hass.config_entries.async_forward_entry_setup(entry, "sensor")
-        )
-        hass.async_create_task(
-            hass.config_entries.async_forward_entry_setup(entry, "button")
-        )
+        # Rejestracja platform - używamy nowszego API
+        await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "button"])
         
         async def handle_analyze_now(call):
             """Obsługa usługi analizy na żądanie."""
@@ -106,6 +102,7 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.hass = hass
         self._remove_update_listener = None
         self._first_startup = True  # Flaga pierwszego uruchomienia
+        self.logger = _LOGGER
         
         # Inicjalizuj przechowywanie danych
         self._store = Store(hass, 1, f"{DOMAIN}_{entry.entry_id}")
@@ -119,7 +116,13 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         
         # Ustawiamy początkowe dane
-        self.data = {"status": "waiting", "last_run": None, "next_scheduled_run": None}
+        self.data = {
+            "status": "waiting", 
+            "status_description": "Oczekiwanie na zaplanowaną analizę", 
+            "progress": 0, 
+            "last_run": None,
+            "next_scheduled_run": None
+        }
     
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from API endpoint."""
@@ -127,13 +130,36 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self._first_startup:
             self._first_startup = False
             next_run = self._calculate_next_run_time()
-            self.data["next_scheduled_run"] = next_run.isoformat()
+            next_run_with_tz = next_run.replace(tzinfo=zoneinfo.ZoneInfo(self.hass.config.time_zone))
+            self.data["next_scheduled_run"] = next_run_with_tz.isoformat()
             self._schedule_next_update(next_run)
             return self.data
         
+        # Aktualizuj status - rozpoczęcie analizy
+        self.data = {
+            **self.data,
+            "status": "generating", 
+            "status_description": "Rozpoczynam analizę logów",
+            "progress": 0,
+            "last_update": datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone)).isoformat()
+        }
+        self.async_update_listeners()  # Ważne - natychmiastowa aktualizacja UI
+        
         # Standardowa logika generowania raportu
         try:
+            # Pobieranie logów
+            self.data["status"] = "reading_logs"
+            self.data["status_description"] = "Odczytuję pliki logów"
+            self.data["progress"] = 10
+            self.async_update_listeners()
+            
             raw_logs = await self._get_system_logs()
+            
+            # Filtrowanie logów
+            self.data["status"] = "filtering_logs"
+            self.data["status_description"] = "Filtruję logi według wybranych poziomów"
+            self.data["progress"] = 30
+            self.async_update_listeners()
             
             # Ograniczenie rozmiaru logów przed filtrowaniem
             if len(raw_logs) > 500000:  # 500KB limit
@@ -149,39 +175,63 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if not filtered_logs:
                 _LOGGER.info("Brak pasujących logów do analizy")
                 return {
+                    **self.data,
                     "status": "no_logs", 
-                    "last_run": datetime.now().isoformat(), 
+                    "status_description": "Brak pasujących logów do analizy",
+                    "progress": 100,
+                    "last_run": datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone)).isoformat(), 
                     "next_scheduled_run": self.data.get("next_scheduled_run")
                 }
-                
+            
+            # Analiza przez AI
+            self.data["status"] = "analyzing"
+            self.data["status_description"] = "Analizuję logi przez AI (może potrwać kilka minut)"
+            self.data["progress"] = 50
+            self.async_update_listeners()
+            
             analysis = await self.analyzer.analyze_logs(
                 filtered_logs,
                 self.entry.options.get(CONF_COST_OPTIMIZATION, False)
             )
+            
+            # Zapisywanie raportu
+            self.data["status"] = "saving"
+            self.data["status_description"] = "Zapisuję raport"
+            self.data["progress"] = 80
+            self.async_update_listeners()
             
             await self._save_to_file(analysis, filtered_logs)
             await self._cleanup_old_reports()
             
             # Zaplanuj następny raport
             next_run = self._calculate_next_run_time()
-            self._schedule_next_update(next_run)
+            next_run_with_tz = next_run.replace(tzinfo=zoneinfo.ZoneInfo(self.hass.config.time_zone))
             
             return {
+                **self.data,
                 "status": "success", 
-                "last_run": datetime.now().isoformat(),
-                "next_scheduled_run": next_run.isoformat()
+                "status_description": "Raport został wygenerowany pomyślnie",
+                "progress": 100,
+                "last_run": datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone)).isoformat(),
+                "next_scheduled_run": next_run_with_tz.isoformat()
             }
         except asyncio.CancelledError:
             _LOGGER.warning("Anulowano operację aktualizacji danych")
             return {
+                **self.data,
                 "status": "cancelled", 
-                "last_run": datetime.now().isoformat(),
+                "status_description": "Anulowano generowanie raportu",
+                "progress": 0,
+                "last_run": datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone)).isoformat(),
                 "next_scheduled_run": self.data.get("next_scheduled_run")
             }
         except Exception as err:
             _LOGGER.exception("Update error: %s", err)
             return {
+                **self.data,
                 "status": "error", 
+                "status_description": f"Błąd podczas generowania raportu: {str(err)}",
+                "progress": 0,
                 "error": str(err), 
                 "next_scheduled_run": self.data.get("next_scheduled_run")
             }
@@ -248,7 +298,8 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         
         # Zapisz informację o następnym uruchomieniu
-        self._store_next_run_time(next_run)
+        next_run_with_tz = next_run.replace(tzinfo=zoneinfo.ZoneInfo(self.hass.config.time_zone))
+        self._store_next_run_time(next_run_with_tz)
     
     async def _handle_update(self, _now=None):
         """Obsługa zaplanowanego zadania aktualizacji."""
@@ -266,26 +317,29 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         stored = await self._store.async_load()
         if stored and "next_scheduled_run" in stored:
             try:
-                next_run = datetime.fromisoformat(stored["next_scheduled_run"])
-                now = datetime.now()
+                next_run_str = stored["next_scheduled_run"]
+                next_run = datetime.fromisoformat(next_run_str)
+                now = datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone))
                 
                 if next_run > now:
                     # Jeśli data jest w przyszłości, użyj jej
-                    self.data["next_scheduled_run"] = stored["next_scheduled_run"]
-                    self._schedule_next_update(next_run)
+                    self.data["next_scheduled_run"] = next_run_str
+                    self._schedule_next_update(next_run.replace(tzinfo=None))
                     return True
                 else:
                     # Oblicz nową datę
                     next_run = self._calculate_next_run_time()
-                    self.data["next_scheduled_run"] = next_run.isoformat()
+                    next_run_with_tz = next_run.replace(tzinfo=zoneinfo.ZoneInfo(self.hass.config.time_zone))
+                    self.data["next_scheduled_run"] = next_run_with_tz.isoformat()
                     self._schedule_next_update(next_run)
                     return True
-            except (ValueError, TypeError):
-                pass
+            except (ValueError, TypeError) as e:
+                _LOGGER.error(f"Błąd podczas wczytywania zapisanej daty: {e}")
         
         # Jeśli nie udało się wczytać danych, oblicz nową datę
         next_run = self._calculate_next_run_time()
-        self.data["next_scheduled_run"] = next_run.isoformat()
+        next_run_with_tz = next_run.replace(tzinfo=zoneinfo.ZoneInfo(self.hass.config.time_zone))
+        self.data["next_scheduled_run"] = next_run_with_tz.isoformat()
         self._schedule_next_update(next_run)
         return True
     
@@ -353,10 +407,11 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             lambda: report_dir.mkdir(exist_ok=True)
         )
         
-        filename = f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        timestamp = datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone))
+        filename = f"report_{timestamp.strftime('%Y%m%d_%H%M%S')}.json"
         report_path = report_dir / filename
         data = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": timestamp.isoformat(),
             "report": analysis,
             "log_snippet": logs[-5000:] if len(logs) > 5000 else logs
         }
