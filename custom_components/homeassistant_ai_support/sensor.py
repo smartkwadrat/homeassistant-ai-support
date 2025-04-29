@@ -12,24 +12,26 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.event import async_track_state_change
+from homeassistant.helpers import entity_registry as er
 
 from .const import DOMAIN
 
 # Tłumaczenia głównych statusów
 STATUS_LABELS = {
     "initialization": {"pl": "Inicjalizacja", "en": "Initialization"},
-    "retry":         {"pl": "Ponowna próba",   "en": "Retry"},
-    "error":         {"pl": "Błąd",            "en": "Error"},
-    "generating":    {"pl": "Generowanie",     "en": "Generating"},
-    "reading_logs":  {"pl": "Odczyt logów",    "en": "Reading logs"},
-    "filtering_logs":{"pl": "Filtrowanie logów", "en": "Filtering logs"},
-    "analyzing":     {"pl": "Analiza",         "en": "Analyzing"},
-    "saving":        {"pl": "Zapisywanie",     "en": "Saving"},
-    "success":       {"pl": "Gotowe",          "en": "Success"},
-    "no_logs":       {"pl": "Brak logów",      "en": "No logs"},
-    "cancelled":     {"pl": "Anulowano",       "en": "Cancelled"},
-    "waiting":       {"pl": "Oczekiwanie",     "en": "Waiting"},
-    "inactive":      {"pl": "Nieaktywne",      "en": "Inactive"},
+    "retry": {"pl": "Ponowna próba", "en": "Retry"},
+    "error": {"pl": "Błąd", "en": "Error"},
+    "generating": {"pl": "Generowanie", "en": "Generating"},
+    "reading_logs": {"pl": "Odczyt logów", "en": "Reading logs"},
+    "filtering_logs": {"pl": "Filtrowanie logów", "en": "Filtering logs"},
+    "analyzing": {"pl": "Analiza", "en": "Analyzing"},
+    "saving": {"pl": "Zapisywanie", "en": "Saving"},
+    "success": {"pl": "Gotowe", "en": "Success"},
+    "no_logs": {"pl": "Brak logów", "en": "No logs"},
+    "cancelled": {"pl": "Anulowano", "en": "Cancelled"},
+    "waiting": {"pl": "Oczekiwanie", "en": "Waiting"},
+    "inactive": {"pl": "Nieaktywne", "en": "Inactive"},
 }
 
 def get_lang(hass):
@@ -42,6 +44,7 @@ def translate_status_label(status_key: str, hass):
 
 class LogAnalysisSensor(CoordinatorEntity, SensorEntity):
     """Reprezentacja czujnika statusu analizy logów."""
+
     _attr_icon = "mdi:clipboard-text-search"
     _attr_unique_id = "homeassistant_ai_support_status"
     _attr_has_entity_name = True
@@ -73,7 +76,6 @@ class LogAnalysisSensor(CoordinatorEntity, SensorEntity):
                 key=lambda f: f.stat().st_ctime,
                 reverse=True
             )
-
             if report_files:
                 try:
                     with report_files[0].open(encoding="utf-8") as f:
@@ -111,7 +113,6 @@ class LogAnalysisSensor(CoordinatorEntity, SensorEntity):
     def _translated_status_description(self):
         """Przetłumacz status_description jeśli to standardowy status."""
         description = self.coordinator.data.get("status_description", "")
-        # Jeśli komunikat statusu jest zdefiniowany jako klucz, przetłumacz go, jeśli nie - zwróć oryginał
         for key in STATUS_LABELS:
             if description.lower().startswith(key):
                 return translate_status_label(key, self.coordinator.hass)
@@ -119,6 +120,7 @@ class LogAnalysisSensor(CoordinatorEntity, SensorEntity):
 
 class LastReportTimeSensor(CoordinatorEntity, SensorEntity):
     """Reprezentacja czujnika czasu ostatniego raportu."""
+
     _attr_icon = "mdi:clock-check"
     _attr_unique_id = "homeassistant_ai_support_last_report_time"
     _attr_has_entity_name = True
@@ -143,24 +145,24 @@ class LastReportTimeSensor(CoordinatorEntity, SensorEntity):
                 key=lambda f: f.stat().st_ctime,
                 reverse=True
             )
-
             if report_files:
                 try:
                     with report_files[0].open(encoding="utf-8") as f:
                         data = json.load(f)
-                        timestamp_str = data.get("timestamp")
-                        if timestamp_str:
-                            dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-                            if dt.tzinfo is None:
-                                local_tz = self.coordinator.hass.config.time_zone
-                                dt = dt.replace(tzinfo=zoneinfo.ZoneInfo(local_tz))
-                            return dt
+                    timestamp_str = data.get("timestamp")
+                    if timestamp_str:
+                        dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                        if dt.tzinfo is None:
+                            local_tz = self.coordinator.hass.config.time_zone
+                            dt = dt.replace(tzinfo=zoneinfo.ZoneInfo(local_tz))
+                        return dt
                 except Exception as e:
                     self.coordinator.logger.error(f"Błąd odczytu czasu ostatniego raportu: {e}")
         return None
 
 class NextReportTimeSensor(CoordinatorEntity, SensorEntity):
     """Reprezentacja czujnika czasu następnego raportu."""
+
     _attr_icon = "mdi:clock-time-four"
     _attr_unique_id = "homeassistant_ai_support_next_report_time"
     _attr_has_entity_name = True
@@ -190,11 +192,106 @@ class NextReportTimeSensor(CoordinatorEntity, SensorEntity):
                 self.coordinator.logger.error(f"Błąd konwersji czasu następnego raportu: {e}")
         return None
 
+class SelectedReportSensor(SensorEntity):
+    """Sensor pokazujący zawartość wybranego raportu AI."""
+
+    _attr_icon = "mdi:file-document-multiple"
+    _attr_has_entity_name = True
+
+    def __init__(self, hass: HomeAssistant):
+        self.hass = hass
+        # Wykrywamy język i ustawiamy odpowiedni entity_id
+        lang = get_lang(hass)
+        if lang == "pl":
+            self._attr_unique_id = "ai_support_wybrany_raport"
+            self._attr_name = "Wybrany raport AI"
+            self._no_report_msg = "Brak raportu"
+        else:
+            self._attr_unique_id = "ai_support_selected_report"
+            self._attr_name = "Selected AI Report"
+            self._no_report_msg = "No report"
+        
+        self._state = self._no_report_msg
+        self._attr_extra_state_attributes = {}
+        self._unsub = None
+
+    async def async_added_to_hass(self):
+        """Rejestruj nasłuchiwanie zmian input_select gdy sensor jest dodawany."""
+        # Próba usunięcia starego sensora z rejestru
+        registry = er.async_get(self.hass)
+        old_entity_id = "sensor.wybrany_raport_ai"
+        if registry.async_get_entity_id("sensor", DOMAIN, "wybrany_raport_ai"):
+            registry.async_remove(old_entity_id)
+        
+        # Dodanie nasłuchiwania zmian w input_select
+        self._unsub = async_track_state_change(
+            self.hass,
+            "input_select.ai_support_report_file",
+            self._input_select_changed
+        )
+        await self.async_update()
+
+    async def async_will_remove_from_hass(self):
+        """Wyczyść nasłuchiwanie gdy sensor jest usuwany."""
+        if self._unsub:
+            self._unsub()
+            self._unsub = None
+
+    async def _input_select_changed(self, entity_id, old_state, new_state):
+        """Obsługa zmiany wyboru w input_select."""
+        # Aktualizacja stanu sensora po zmianie input_select
+        await self.async_update()
+        # Wymuszamy aktualizację UI
+        self.async_write_ha_state()
+
+    @property
+    def state(self):
+        return self._state
+
+    @property
+    def extra_state_attributes(self):
+        return self._attr_extra_state_attributes
+
+    async def async_update(self):
+        entity_id = "input_select.ai_support_report_file"
+        selected = self.hass.states.get(entity_id)
+        if not selected or selected.state in ("unknown", "Brak raportów"):
+            self._state = self._no_report_msg
+            self._attr_extra_state_attributes = {}
+            return
+            
+        # Używamy nazwy pliku jako stanu (krótki) zamiast treści raportu
+        file_name = selected.state
+        self._state = file_name
+        
+        file_path = Path(self.hass.config.path("ai_reports")) / file_name
+        if not file_path.exists():
+            self._state = self._no_report_msg
+            self._attr_extra_state_attributes = {}
+            return
+            
+        try:
+            with file_path.open(encoding="utf-8") as f:
+                data = json.load(f)
+            
+            # Przenosimy treść raportu do atrybutów zamiast stanu
+            self._attr_extra_state_attributes = {
+                "timestamp": data.get("timestamp"),
+                "report": data.get("report", ""),
+                "log_snippet": data.get("log_snippet", "")
+            }
+        except Exception as e:
+            lang = get_lang(self.hass)
+            error_msg = f"Błąd: {e}" if lang == "pl" else f"Error: {e}"
+            self._state = error_msg
+            self._attr_extra_state_attributes = {}
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
     """Konfiguracja platformy sensor."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([
         LogAnalysisSensor(coordinator),
         LastReportTimeSensor(coordinator),
-        NextReportTimeSensor(coordinator)
+        NextReportTimeSensor(coordinator),
+        SelectedReportSensor(hass),  # Dodany sensor do przeglądania raportów przez input_select
     ])

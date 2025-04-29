@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -44,21 +43,61 @@ from .openai_handler import OpenAIAnalyzer
 
 _LOGGER = logging.getLogger(__name__)
 
+INPUT_SELECT_ENTITY = "input_select.ai_support_report_file"
+
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Home Assistant AI Support component."""
     hass.data.setdefault(DOMAIN, {})
     return True
-    
+
+async def update_input_select_options(hass: HomeAssistant):
+    """Update input_select options with current report files, if helper exists."""
+    entity_id = INPUT_SELECT_ENTITY
+    if entity_id not in hass.states.async_entity_ids("input_select"):
+        # Helper nie istnieje – nie rób nic, integracja działa jak dawniej
+        return
+    reports_dir = Path(hass.config.path("ai_reports"))
+    if reports_dir.exists():
+        files = sorted(
+            [f.name for f in reports_dir.glob("report_*.json")],
+            reverse=True
+        )
+        options = files if files else ["Brak raportów"]
+        await hass.services.async_call(
+            "input_select",
+            "set_options",
+            {
+                "entity_id": entity_id,
+                "options": options
+            },
+            blocking=True,
+        )
+        # Jeśli wybrana opcja nie istnieje, ustaw najnowszą
+        state = hass.states.get(entity_id)
+        if state and state.state not in options and options and options[0] != "Brak raportów":
+            await hass.services.async_call(
+                "input_select",
+                "select_option",
+                {
+                    "entity_id": entity_id,
+                    "option": options[0]
+                },
+                blocking=True,
+            )
+
 async def options_update_listener(hass, config_entry):
     await hass.config_entries.async_reload(config_entry.entry_id)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Home Assistant AI Support from a config entry."""
     try:
+        # Jeśli helper istnieje, zaktualizuj opcje dropdowna
+        await update_input_select_options(hass)
+
         coordinator = LogAnalysisCoordinator(hass, entry)
-        # Wczytaj zapisaną datę następnego uruchomienia zamiast generować raport
         await coordinator._load_stored_next_run_time()
         hass.data[DOMAIN][entry.entry_id] = coordinator
+
         entry.async_on_unload(entry.add_update_listener(options_update_listener))
 
         # Rejestracja platform
@@ -92,7 +131,6 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Class to manage fetching log analysis data."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
-        """Initialize."""
         self.entry = entry
         self.analyzer = OpenAIAnalyzer(
             hass=hass,
@@ -102,21 +140,18 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.hass = hass
         self._remove_update_listener = None
-        self._first_startup = True  # Flaga pierwszego uruchomienia
+        self._first_startup = True
         self.logger = _LOGGER
 
-        # Inicjalizuj przechowywanie danych
         self._store = Store(hass, 1, f"{DOMAIN}_{entry.entry_id}")
 
-        # Używamy własnej logiki planowania zamiast update_interval
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=None,  # Wyłączamy domyślny mechanizm interwału
+            update_interval=None,
         )
 
-        # Ustawiamy początkowe dane
         self.data = {
             "status": "waiting",
             "status_description": "Oczekiwanie na zaplanowaną analizę",
@@ -126,8 +161,6 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         }
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch data from API endpoint."""
-        # Jeśli to pierwsze uruchomienie, nie generuj raportu
         if self._first_startup:
             self._first_startup = False
             next_run = self._calculate_next_run_time()
@@ -136,7 +169,6 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._schedule_next_update(next_run)
             return self.data
 
-        # Aktualizuj status - rozpoczęcie analizy
         self.data = {
             **self.data,
             "status": "generating",
@@ -144,24 +176,21 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "progress": 0,
             "last_update": datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone)).isoformat(),
         }
-        self.async_update_listeners()  # Ważne - natychmiastowa aktualizacja UI
+        self.async_update_listeners()
 
         try:
-            # Pobieranie logów
             self.data["status"] = "reading_logs"
             self.data["status_description"] = "Odczytuję pliki logów"
             self.data["progress"] = 10
             self.async_update_listeners()
             raw_logs = await self._get_system_logs()
 
-            # Filtrowanie logów
             self.data["status"] = "filtering_logs"
             self.data["status_description"] = "Filtruję logi według wybranych poziomów"
             self.data["progress"] = 30
             self.async_update_listeners()
 
-            # Ograniczenie rozmiaru logów przed filtrowaniem
-            if len(raw_logs) > 500000:  # 500KB limit
+            if len(raw_logs) > 500000:
                 _LOGGER.info("Ograniczono rozmiar logów z %d do 500000 znaków", len(raw_logs))
                 raw_logs = raw_logs[-500000:]
 
@@ -170,7 +199,6 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.entry.options.get(CONF_LOG_LEVELS, ["ERROR", "WARNING"])
             )
 
-            # Jeśli nie ma logów, zwróć wcześniej
             if not filtered_logs:
                 _LOGGER.info("Brak pasujących logów do analizy")
                 return {
@@ -182,7 +210,6 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "next_scheduled_run": self.data.get("next_scheduled_run"),
                 }
 
-            # Analiza przez AI
             self.data["status"] = "analyzing"
             self.data["status_description"] = "Analizuję logi przez AI (może potrwać kilka minut)"
             self.data["progress"] = 50
@@ -192,7 +219,6 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.entry.options.get(CONF_COST_OPTIMIZATION, False)
             )
 
-            # Zapisywanie raportu
             self.data["status"] = "saving"
             self.data["status_description"] = "Zapisuję raport"
             self.data["progress"] = 80
@@ -200,7 +226,9 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._save_to_file(analysis, filtered_logs)
             await self._cleanup_old_reports()
 
-            # Zaplanuj następny raport
+            # Jeśli helper istnieje, zaktualizuj opcje dropdowna
+            await update_input_select_options(self.hass)
+
             next_run = self._calculate_next_run_time()
             next_run_with_tz = next_run.replace(tzinfo=zoneinfo.ZoneInfo(self.hass.config.time_zone))
             return {
@@ -234,12 +262,10 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             }
 
     def _calculate_next_run_time(self) -> datetime:
-        """Oblicz czas następnego uruchomienia na podstawie interwału i ostatniego raportu."""
         now = datetime.now()
         interval_option = self.entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         interval_days = SCAN_INTERVAL_OPTIONS[interval_option]
 
-        # Znajdź najnowszy raport
         report_dir = Path(self.hass.config.path("ai_reports"))
         last_report_time = None
         if report_dir.exists():
@@ -249,10 +275,8 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 reverse=True
             )
             if report_files:
-                # Pobierz czas utworzenia najnowszego raportu
                 last_report_time = datetime.fromtimestamp(report_files[0].stat().st_ctime)
 
-        # Ustal następny czas uruchomienia
         if last_report_time:
             next_run = last_report_time.replace(
                 hour=REPORT_GENERATION_HOUR,
@@ -260,11 +284,9 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 second=0,
                 microsecond=0
             ) + timedelta(days=interval_days)
-            # Jeśli już minął, dodaj kolejny interwał
             if next_run <= now:
                 next_run = next_run + timedelta(days=interval_days)
         else:
-            # Jeśli nie ma raportów, zaplanuj na dzisiaj/jutro o określonej godzinie
             next_run = now.replace(
                 hour=REPORT_GENERATION_HOUR,
                 minute=REPORT_GENERATION_MINUTE,
@@ -277,67 +299,44 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return next_run
 
     def _schedule_next_update(self, next_run):
-        """Zaplanuj następne uruchomienie analizy."""
-        # Usuń poprzednie zaplanowane zadanie
         if self._remove_update_listener:
             self._remove_update_listener()
             self._remove_update_listener = None
-        # Zaplanuj następne uruchomienie
         self._remove_update_listener = async_track_point_in_time(
             self.hass, self._handle_update, next_run
         )
-        # Zapisz informację o następnym uruchomieniu oraz aktualnym interwale
         next_run_with_tz = next_run.replace(tzinfo=zoneinfo.ZoneInfo(self.hass.config.time_zone))
         self._store_next_run_time(next_run_with_tz)
 
     async def _handle_update(self, _now=None):
-        """Obsługa zaplanowanego zadania aktualizacji."""
         _LOGGER.info("Rozpoczynam zaplanowaną analizę logów")
         await self.async_refresh()
 
     def _store_next_run_time(self, next_run):
-        """Zapisz datę następnego uruchomienia oraz interwał."""
-        interval_option = self.entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-        interval_days = SCAN_INTERVAL_OPTIONS[interval_option]
         self.hass.async_create_task(
-            self._store.async_save({
-                "next_scheduled_run": next_run.isoformat(),
-                "interval_days": interval_days
-            })
+            self._store.async_save({"next_scheduled_run": next_run.isoformat()})
         )
 
     async def _load_stored_next_run_time(self):
-        """Wczytaj zapisaną datę następnego uruchomienia."""
         stored = await self._store.async_load()
-        now = datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone))
-        interval_option = self.entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-        interval_days = SCAN_INTERVAL_OPTIONS[interval_option]
-
-        # Pobierz poprzedni interwał jeśli był zapisany
-        prev_interval = None
-        if stored and "interval_days" in stored:
-            prev_interval = stored["interval_days"]
-
         if stored and "next_scheduled_run" in stored:
             try:
                 next_run_str = stored["next_scheduled_run"]
                 next_run = datetime.fromisoformat(next_run_str)
-
-                # Jeśli interwał się zmienił LUB data jest nieaktualna – przelicz
-                if prev_interval != interval_days or next_run <= now:
+                now = datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone))
+                if next_run > now:
+                    self.data["next_scheduled_run"] = next_run_str
+                    self._schedule_next_update(next_run.replace(tzinfo=None))
+                    return True
+                else:
                     next_run = self._calculate_next_run_time()
                     next_run_with_tz = next_run.replace(tzinfo=zoneinfo.ZoneInfo(self.hass.config.time_zone))
                     self.data["next_scheduled_run"] = next_run_with_tz.isoformat()
                     self._schedule_next_update(next_run)
-                else:
-                    # Jeśli interwał się nie zmienił i data jest w przyszłości – użyj zapisanej daty
-                    self.data["next_scheduled_run"] = next_run_str
-                    self._schedule_next_update(next_run.replace(tzinfo=None))
-                return True
+                    return True
             except (ValueError, TypeError) as e:
                 _LOGGER.error(f"Błąd podczas wczytywania zapisanej daty: {e}")
 
-        # Jeśli nie udało się wczytać danych, oblicz nową datę
         next_run = self._calculate_next_run_time()
         next_run_with_tz = next_run.replace(tzinfo=zoneinfo.ZoneInfo(self.hass.config.time_zone))
         self.data["next_scheduled_run"] = next_run_with_tz.isoformat()
@@ -345,7 +344,6 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return True
 
     async def _get_system_logs(self) -> str:
-        """Pobierz logi systemowe."""
         log_path = Path(self.hass.config.path("home-assistant.log"))
         try:
             content = await self.hass.async_add_executor_job(
@@ -359,11 +357,9 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return ""
 
     def _filter_logs(self, logs: str, levels: list) -> str:
-        """Filtruje logi według wybranych poziomów i loguje fragmenty do debugowania."""
         if not logs:
             _LOGGER.debug("Plik logów jest pusty.")
             return ""
-        # Mapowanie polskich etykiet na angielskie poziomy logowania
         level_map = {
             "DEBUG": "DEBUG",
             "INFO": "INFO",
@@ -376,17 +372,14 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "Błędy": "ERROR",
             "Krytyczne": "CRITICAL",
         }
-        # Zamień wybrane poziomy na angielskie
         mapped_levels = [level_map.get(level, level).upper() for level in levels]
         _LOGGER.debug("Wybrane poziomy logów (po mapowaniu): %s", mapped_levels)
-        # Filtruj linie - bardziej efektywnie, bez tworzenia dużych list
         filtered_lines = []
         count = 0
         for line in logs.split('\n'):
             if any(f" {level} " in line for level in mapped_levels):
                 filtered_lines.append(line)
                 count += 1
-            # Ograniczenie do maksymalnie 2000 pasujących linii
             if count >= 2000:
                 _LOGGER.info("Osiągnięto limit 2000 linii logów, obcinam pozostałe")
                 break
@@ -395,7 +388,6 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return filtered_logs
 
     async def _save_to_file(self, analysis: str, logs: str) -> None:
-        """Zapisz raport analizy do pliku."""
         report_dir = Path(self.hass.config.path("ai_reports"))
         await self.hass.async_add_executor_job(
             lambda: report_dir.mkdir(exist_ok=True)
@@ -417,7 +409,6 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         _LOGGER.info("Zapisano raport do pliku: %s", report_path)
 
     async def _cleanup_old_reports(self) -> None:
-        """Usuń stare raporty, pozostawiając tylko określoną liczbę najnowszych."""
         max_reports = self.entry.options.get(CONF_MAX_REPORTS, 10)
         report_dir = Path(self.hass.config.path("ai_reports"))
         exists = await self.hass.async_add_executor_job(
