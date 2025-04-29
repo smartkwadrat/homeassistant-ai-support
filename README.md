@@ -9,17 +9,33 @@ Dashboard card for displaying the newest report:
 
 ```yaml
 type: markdown
-title: Ostatni raport AI
+title: Latest AI report
 content: |-
   sensor.ai_support_status_analizy_logow
 
   type: markdown
-  title: Ostatni raport AI
+  title: Latest AI report
   content: |
     **Data:** {{ state_attr('sensor.ai_support_status_analizy_logow', 'timestamp') }}
 
-    **Raport:** {{ state_attr('sensor.ai_support_status_analizy_logow', 'report') }}
+    {{ state_attr('sensor.ai_support_status_analizy_logow', 'report') }}
 
+  ```
+
+
+Dashboard cards for displaying selected report:
+
+```yaml
+type: entities
+entities:
+  - entity: input_select.ai_support_report_file
+title: Select report
+  ```
+
+```yaml
+**Data:** {{ state_attr('sensor.wybrany_raport_ai', 'timestamp') }}
+
+{{ state_attr('sensor.wybrany_raport_ai', 'report') }}
   ```
 
 
