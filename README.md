@@ -33,9 +33,12 @@ title: Select report
   ```
 
 ```yaml
-**Data:** {{ state_attr('sensor.wybrany_raport_ai', 'timestamp') }}
+type: markdown
+title: Wybrany raport AI
+content: |-
+  **Data:** {{ state_attr('sensor.wybrany_raport_ai', 'timestamp') }}
 
-{{ state_attr('sensor.wybrany_raport_ai', 'report') }}
+  {{ state_attr('sensor.wybrany_raport_ai', 'report') }}
   ```
 
 
