@@ -5,7 +5,7 @@ This is custom integration to home assistant which use ChatGPT for analyzing log
 Version 0.7.9
 
 
-Dashboard card for displaying the newest report:
+Dashboard card for displaying the newest report (English) :
 
 ```yaml
 type: markdown
@@ -19,11 +19,44 @@ content: |-
     **Data:** {{ state_attr('sensor.ai_support_status_analizy_logow', 'timestamp') }}
 
     {{ state_attr('sensor.ai_support_status_analizy_logow', 'report') }}
+  ```
 
+Karta do wyświetlania najnowszego raportu (Polski) :
+
+```yaml
+type: markdown
+title: Ostatni raport AI
+content: |-
+  sensor.ai_support_status_analizy_logow
+
+  type: markdown
+  title: Latest AI report
+  content: |
+    **Data:** {{ state_attr('sensor.ai_support_status_analizy_logow', 'timestamp') }}
+
+    {{ state_attr('sensor.ai_support_status_analizy_logow', 'report') }}
   ```
 
 
-Dashboard cards for displaying selected report:
+Dashboard cards for displaying selected report (English):
+
+```yaml
+type: entities
+entities:
+  - entity: input_select.ai_support_report_file
+title: Select report
+  ```
+
+```yaml
+type: markdown
+title: Selected AI Report
+content: |-
+  **Data:** {{ state_attr('sensor.ai_support_selected_report', 'timestamp') }}
+
+  {{ state_attr('sensor.ai_support_selected_reporti', 'report') }}
+  ```
+
+Karty do wyświetlania dowolnego raportu (Polski):
 
 ```yaml
 type: entities
@@ -36,11 +69,10 @@ title: Select report
 type: markdown
 title: Wybrany raport AI
 content: |-
-  **Data:** {{ state_attr('sensor.wybrany_raport_ai', 'timestamp') }}
+  **Data:** {{ state_attr('sensor.ai_support_wybrany_raport', 'timestamp') }}
 
-  {{ state_attr('sensor.wybrany_raport_ai', 'report') }}
+  {{ state_attr('sensor.ai_support_wybrany_raport', 'report') }}
   ```
-
 
 (Optional) To enable logging for this integration, add following lines to configuration.yaml:
 
