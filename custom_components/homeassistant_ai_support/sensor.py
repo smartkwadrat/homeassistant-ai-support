@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 import zoneinfo
+import aiofiles
 
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -15,7 +16,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_state_change
 from homeassistant.helpers import entity_registry as er
 
-from .const import DOMAIN
+from .const import (
+    DOMAIN, 
+    ENTITY_CATEGORY_DIAGNOSTIC,
+)
 
 # Tłumaczenia głównych statusów
 STATUS_LABELS = {
@@ -102,7 +106,10 @@ class LogAnalysisSensor(CoordinatorEntity, SensorEntity):
             if last_update:
                 try:
                     start_time = datetime.fromisoformat(last_update)
-                    now = datetime.now(tz=start_time.tzinfo)
+                    local_tz = self.coordinator.hass.config.time_zone
+                    if start_time.tzinfo is None:
+                        start_time = start_time.replace(tzinfo=zoneinfo.ZoneInfo(local_tz))
+                    now = datetime.now(tz=zoneinfo.ZoneInfo(local_tz))
                     duration = now - start_time
                     attrs["duration"] = f"{int(duration.total_seconds())} sekund"
                 except Exception:
@@ -217,11 +224,6 @@ class SelectedReportSensor(SensorEntity):
 
     async def async_added_to_hass(self):
         """Rejestruj nasłuchiwanie zmian input_select gdy sensor jest dodawany."""
-        # Próba usunięcia starego sensora z rejestru
-        registry = er.async_get(self.hass)
-        old_entity_id = "sensor.wybrany_raport_ai"
-        if registry.async_get_entity_id("sensor", DOMAIN, "wybrany_raport_ai"):
-            registry.async_remove(old_entity_id)
         
         # Dodanie nasłuchiwania zmian w input_select
         self._unsub = async_track_state_change(
@@ -252,39 +254,37 @@ class SelectedReportSensor(SensorEntity):
     def extra_state_attributes(self):
         return self._attr_extra_state_attributes
 
-    async def async_update(self):
-        entity_id = "input_select.ai_support_report_file"
-        selected = self.hass.states.get(entity_id)
-        if not selected or selected.state in ("unknown", "Brak raportów"):
-            self._state = self._no_report_msg
-            self._attr_extra_state_attributes = {}
-            return
-            
-        # Używamy nazwy pliku jako stanu (krótki) zamiast treści raportu
-        file_name = selected.state
-        self._state = file_name
-        
-        file_path = Path(self.hass.config.path("ai_reports")) / file_name
-        if not file_path.exists():
-            self._state = self._no_report_msg
-            self._attr_extra_state_attributes = {}
-            return
-            
-        try:
-            with file_path.open(encoding="utf-8") as f:
-                data = json.load(f)
-            
-            # Przenosimy treść raportu do atrybutów zamiast stanu
-            self._attr_extra_state_attributes = {
-                "timestamp": data.get("timestamp"),
-                "report": data.get("report", ""),
-                "log_snippet": data.get("log_snippet", "")
-            }
-        except Exception as e:
-            lang = get_lang(self.hass)
-            error_msg = f"Błąd: {e}" if lang == "pl" else f"Error: {e}"
-            self._state = error_msg
-            self._attr_extra_state_attributes = {}
+async def async_update(self):
+    entity_id = "input_select.ai_support_report_file"
+    selected = self.hass.states.get(entity_id)
+
+    if not selected or selected.state in ("unknown", "Brak raportów"):
+        self._state = self._no_report_msg
+        self._attr_extra_state_attributes = {}
+        return
+
+    file_name = selected.state
+    self._state = file_name
+    file_path = Path(self.hass.config.path("ai_reports")) / file_name
+
+    if not await self.hass.async_add_executor_job(lambda: file_path.exists()):
+        self._state = self._no_report_msg
+        self._attr_extra_state_attributes = {}
+        return
+
+    try:
+        async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
+            data = json.loads(await f.read())
+        self._attr_extra_state_attributes = {
+            "timestamp": data.get("timestamp"),
+            "report": data.get("report", ""),
+            "log_snippet": data.get("log_snippet", "")
+        }
+    except Exception as e:
+        lang = get_lang(self.hass)
+        error_msg = f"Błąd: {e}" if lang == "pl" else f"Error: {e}"
+        self._state = error_msg
+        self._attr_extra_state_attributes = {}
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
     """Konfiguracja platformy sensor."""
@@ -295,3 +295,41 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         NextReportTimeSensor(coordinator),
         SelectedReportSensor(hass),  # Dodany sensor do przeglądania raportów przez input_select
     ])
+
+class EntityDiscoverySensor(CoordinatorEntity, SensorEntity):
+    _attr_icon = "mdi:magnify-scan"
+
+    def __init__(self, coordinator):
+        super().__init__(coordinator)
+        self._attr_name = "Entity Discovery Status"
+        self._attr_unique_id = f"{DOMAIN}_entity_discovery_status"
+        self._attr_entity_category = ENTITY_CATEGORY_DIAGNOSTIC
+
+    @property
+    def native_value(self):
+        return self.coordinator.entity_discovery_status.get("status", "idle")
+
+    @property
+    def extra_state_attributes(self):
+        return self.coordinator.entity_discovery_status
+
+class AnomalyDetectionSensor(CoordinatorEntity, SensorEntity):
+    _attr_icon = "mdi:alert-circle-outline"
+
+    def __init__(self, coordinator):
+        super().__init__(coordinator)
+        self._attr_name = "Anomaly Detection Status"
+        self._attr_unique_id = f"{DOMAIN}_anomaly_detection_status"
+        self._attr_entity_category = ENTITY_CATEGORY_DIAGNOSTIC
+
+    @property
+    def native_value(self):
+        return len(self.coordinator.anomaly_detector.detected_anomalies)
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "last_anomaly": self.coordinator.anomaly_detector.last_anomaly_time,
+            "false_alarms": self.coordinator.anomaly_detector.false_alarm_count,
+            "sensitivity": self.coordinator.anomaly_detector.current_sensitivity
+        }

@@ -135,7 +135,35 @@ class GenerateReportButton(CoordinatorEntity, ButtonEntity):
                 self.coordinator.data["status_description"] = translate_status("error", hass)
                 self.coordinator.async_update_listeners()
 
+class DiscoverEntitiesButton(CoordinatorEntity, ButtonEntity):
+    _attr_icon = "mdi:magnify"
+
+    def __init__(self, coordinator):
+        super().__init__(coordinator)
+        self._attr_name = "Discover Entities"
+        self._attr_unique_id = f"{DOMAIN}_discover_entities"
+        self._attr_entity_category = ENTITY_CATEGORY_DIAGNOSTIC
+
+    async def async_press(self):
+        await self.coordinator.start_entity_discovery()
+
+class BuildBaselineButton(CoordinatorEntity, ButtonEntity):
+    _attr_icon = "mdi:chart-line"
+
+    def __init__(self, coordinator):
+        super().__init__(coordinator)
+        self._attr_name = "Build Baseline"
+        self._attr_unique_id = f"{DOMAIN}_build_baseline"
+        self._attr_entity_category = ENTITY_CATEGORY_DIAGNOSTIC
+
+    async def async_press(self):
+        await self.coordinator.start_baseline_building()
+        
 async def async_setup_entry(hass, entry: ConfigEntry, async_add_entities):
     """Konfiguracja platformy button."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([GenerateReportButton(coordinator)])
+    async_add_entities([
+        GenerateReportButton(coordinator),
+        DiscoverEntitiesButton(coordinator),
+        BuildBaselineButton(coordinator),
+    ])

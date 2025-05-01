@@ -16,30 +16,14 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.event import async_track_point_in_time
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
 
-from .const import (
-    CONF_API_KEY,
-    CONF_MODEL,
-    CONF_SCAN_INTERVAL,
-    CONF_COST_OPTIMIZATION,
-    CONF_SYSTEM_PROMPT,
-    CONF_LOG_LEVELS,
-    CONF_MAX_REPORTS,
-    CONF_DIAGNOSTIC_INTEGRATION,
-    DOMAIN,
-    MODEL_MAPPING,
-    SCAN_INTERVAL_DAILY,
-    SCAN_INTERVAL_2_DAYS,
-    SCAN_INTERVAL_7_DAYS,
-    SCAN_INTERVAL_30_DAYS,
-    SCAN_INTERVAL_OPTIONS,
-    DEFAULT_SCAN_INTERVAL,
-    REPORT_GENERATION_HOUR,
-    REPORT_GENERATION_MINUTE,
-)
+from .const import *
 
 from .openai_handler import OpenAIAnalyzer
+from .sensor import EntityDiscoverySensor, AnomalyDetectionSensor
+from .button import DiscoverEntitiesButton, BuildBaselineButton
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -94,20 +78,51 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Jeśli helper istnieje, zaktualizuj opcje dropdowna
         await update_input_select_options(hass)
 
+        # Inicjalizacja danych domeny
+        if DOMAIN not in hass.data:
+            hass.data[DOMAIN] = {}
+        
+        # Inicjalizacja oryginalnego koordynatora
         coordinator = LogAnalysisCoordinator(hass, entry)
         await coordinator._load_stored_next_run_time()
+        
+        # Inicjalizacja nowego koordynatora AI
+        ai_coordinator = AIAnalyticsCoordinator(hass, entry)
+        await ai_coordinator.async_config_entry_first_refresh()
+        
+        # Przechowywanie obu koordynatorów i inicjalizacja listy encji
         hass.data[DOMAIN][entry.entry_id] = coordinator
+        hass.data[DOMAIN]["coordinator"] = ai_coordinator
+        hass.data[DOMAIN]["entities"] = []
+
+        # Rejestracja nowych encji
+        sensors = [
+            EntityDiscoverySensor(ai_coordinator),
+            AnomalyDetectionSensor(ai_coordinator)
+        ]
+        buttons = [
+            DiscoverEntitiesButton(ai_coordinator),
+            BuildBaselineButton(ai_coordinator)
+        ]
 
         entry.async_on_unload(entry.add_update_listener(options_update_listener))
 
         # Rejestracja platform
         await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "button"])
 
+        # Rejestracja usługi analizy na żądanie
         async def handle_analyze_now(call):
             """Obsługa usługi analizy na żądanie."""
             await coordinator.async_request_refresh()
 
         hass.services.async_register(DOMAIN, "analyze_now", handle_analyze_now)
+
+        # Skonfiguruj okresowe zadania dla wykrywania anomalii
+        async_track_time_interval(
+            hass, 
+            ai_coordinator.async_check_anomalies, 
+            timedelta(minutes=entry.options.get(CONF_ANOMALY_CHECK_INTERVAL, 30))  # Domyślnie 30 minut jeśli nie skonfigurowano
+        )
 
         return True
 
@@ -115,6 +130,116 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("Setup error: %s", err, exc_info=True)
         raise ConfigEntryNotReady from err
 
+
+class AIAnalyticsCoordinator:
+    """Koordinator analizy AI dla Home Assistant."""
+    
+    def __init__(self, hass, entry):
+        """Initialize the AI Analytics coordinator."""
+        self.hass = hass
+        self.entry = entry
+        self.entity_discovery_status = {}
+        self.anomaly_detector = AnomalyDetector(hass)
+    
+    async def async_config_entry_first_refresh(self):
+        """Initial refresh of data."""
+        # Inicjalizacja danych przy pierwszym uruchomieniu
+        pass
+    
+    async def async_check_anomalies(self, *args):
+        """Check for anomalies in the system."""
+        await self.anomaly_detector.detect()
+    
+    async def start_entity_discovery(self):
+        """Start the entity discovery process."""
+        # Implementation for entity discovery
+        pass
+    
+    async def start_baseline_building(self):
+        """Start building the baseline for anomaly detection."""
+        # Implementation for baseline building
+        pass
+
+class AnomalyDetector:
+    """Detector for anomalies in entity data."""
+    
+    def __init__(self, hass):
+        """Initialize the anomaly detector."""
+        self.hass = hass
+        self.false_alarm_count = 0
+        self.current_sensitivity = 3.0  # Default 3 sigma
+        self.last_anomaly_time = None
+        
+    async def detect(self):
+        """Detect anomalies in entity data."""
+        _LOGGER.debug("Checking for anomalies...")
+        # Implementacja wykrywania anomalii
+        pass
+        
+    async def log_false_alarm(self, entity_id, reason):
+        """Log a false alarm."""
+        log_entry = {
+            "timestamp": datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone)).isoformat(),
+            "entity_id": entity_id,
+            "reason": reason,
+            "sensitivity": self.current_sensitivity
+        }
+        
+        await self._append_to_log(FALSE_ALARM_LOG_FILE, log_entry)
+        self.false_alarm_count += 1
+        self._adjust_sensitivity()
+        
+    async def log_rejected_anomaly(self, entity_id, reason):
+        """Log a rejected anomaly."""
+        log_entry = {
+            "timestamp": datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone)).isoformat(),
+            "entity_id": entity_id,
+            "reason": reason,
+            "sensitivity": self.current_sensitivity
+        }
+        
+        await self._append_to_log(REJECTED_ANOMALIES_FILE, log_entry)
+        
+    async def _append_to_log(self, filename, entry):
+        """Append an entry to a log file as proper JSON array."""
+        log_path = Path(self.hass.config.path(ANOMALY_LOG_DIR)) / filename
+    
+        # Ensure directory exists
+        await self.hass.async_add_executor_job(
+            lambda: log_path.parent.mkdir(exist_ok=True)
+        )
+    
+        try:
+            # Initialize data as a list
+            data = []
+        
+            # If file exists and has content, read existing data
+            if await self.hass.async_add_executor_job(lambda: log_path.exists() and log_path.stat().st_size > 0):
+                try:
+                    data = await self.hass.async_add_executor_job(
+                        lambda: json.loads(log_path.read_text())
+                    )
+                except json.JSONDecodeError:
+                    _LOGGER.warning(f"Invalid JSON format in {filename}, creating new file")
+        
+            # Add new entry
+            data.append(entry)
+        
+            # Write updated data back to file
+            await self.hass.async_add_executor_job(
+                lambda: log_path.write_text(json.dumps(data, indent=2))
+            )
+        except Exception as e:
+            _LOGGER.error(f"Error writing to log file: {e}")
+            
+    def _adjust_sensitivity(self):
+        """Dynamically adjust sensitivity based on false alarm rate."""
+        # Dynamic sensitivity adjustment logic
+        if self.false_alarm_count > 10:
+            self.current_sensitivity = min(self.current_sensitivity * 1.1, 5.0)
+        elif self.false_alarm_count < 5:
+            self.current_sensitivity = max(self.current_sensitivity * 0.9, 2.0)
+            
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor", "button"])
@@ -262,12 +387,16 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             }
 
     def _calculate_next_run_time(self) -> datetime:
-        now = datetime.now()
+        # Pobierz aktualny czas w strefie czasowej HA
+        now = datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone))
+        # Pobierz wybraną opcję interwału lub domyślną
         interval_option = self.entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-        interval_days = SCAN_INTERVAL_OPTIONS[interval_option]
+        # Zabezpieczenie na wypadek nieprawidłowej wartości
+        interval_days = SCAN_INTERVAL_OPTIONS.get(interval_option, SCAN_INTERVAL_OPTIONS[DEFAULT_SCAN_INTERVAL])
 
         report_dir = Path(self.hass.config.path("ai_reports"))
         last_report_time = None
+
         if report_dir.exists():
             report_files = sorted(
                 report_dir.glob("report_*.json"),
@@ -275,7 +404,7 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 reverse=True
             )
             if report_files:
-                last_report_time = datetime.fromtimestamp(report_files[0].stat().st_ctime)
+                last_report_time = datetime.fromtimestamp(report_files[0].stat().st_ctime, tz=zoneinfo.ZoneInfo(self.hass.config.time_zone))
 
         if last_report_time:
             next_run = last_report_time.replace(
@@ -295,6 +424,7 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             if next_run <= now:
                 next_run = next_run + timedelta(days=1)
+
         _LOGGER.info(f"Zaplanowano następną analizę na: {next_run}")
         return next_run
 
@@ -430,3 +560,4 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 lambda f=old_file: f.unlink()
             )
             _LOGGER.debug("Usunięto stary raport: %s", old_file)
+

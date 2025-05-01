@@ -53,7 +53,7 @@ title: Selected AI Report
 content: |-
   **Data:** {{ state_attr('sensor.ai_support_selected_report', 'timestamp') }}
 
-  {{ state_attr('sensor.ai_support_selected_reporti', 'report') }}
+  {{ state_attr('sensor.ai_support_selected_report', 'report') }}
   ```
 
 Karty do wyświetlania dowolnego raportu (Polski):

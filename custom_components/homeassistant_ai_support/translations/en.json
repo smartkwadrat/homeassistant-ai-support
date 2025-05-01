@@ -12,7 +12,13 @@
             "cost_optimization": "Cost Optimization",
             "log_levels": "Log Levels",
             "max_reports": "Maximum Reports",
-            "diagnostic_integration": "Diagnostic Integration"
+            "diagnostic_integration": "Diagnostic Integration",
+            "entity_count": "Entities to Monitor",
+            "standard_check_interval": "Standard Check Interval (minutes)",
+            "priority_check_interval": "Priority Check Interval (minutes)",
+            "anomaly_check_interval": "Anomaly Check Interval (minutes)",
+            "baseline_refresh_interval": "Baseline Refresh Interval",
+            "learning_mode": "Learning Mode"
           }
         },
         "error": {
@@ -35,7 +41,13 @@
             "cost_optimization": "Cost Optimization",
             "log_levels": "Log Levels",
             "max_reports": "Maximum Reports",
-            "diagnostic_integration": "Diagnostic Integration"
+            "diagnostic_integration": "Diagnostic Integration",
+            "entity_count": "Entities to Monitor",
+            "standard_check_interval": "Standard Check Interval (minutes)",
+            "priority_check_interval": "Priority Check Interval (minutes)",
+            "anomaly_check_interval": "Anomaly Check Interval (minutes)",
+            "baseline_refresh_interval": "Baseline Refresh Interval",
+            "learning_mode": "Learning Mode"
           }
         }
       }
@@ -47,6 +59,16 @@
           "2_days": "Every 2 days",
           "7_days": "Every 7 days",
           "30_days": "Every 30 days"
+        }
+      }
+    },
+    "entity": {
+      "sensor": {
+        "entity_discovery_status": {
+          "name": "Entity Discovery Status"
+        },
+        "anomaly_detection_status": {
+          "name": "Anomaly Detection Status"
         }
       }
     }

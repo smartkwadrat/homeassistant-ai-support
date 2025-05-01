@@ -29,10 +29,23 @@ from .const import (
     DEFAULT_LOG_LEVELS,
     DEFAULT_MAX_REPORTS,
     DEFAULT_DIAGNOSTIC_INTEGRATION,
+    DEFAULT_ENTITY_COUNT,
+    DEFAULT_STANDARD_CHECK_INTERVAL,
+    DEFAULT_PRIORITY_CHECK_INTERVAL,
+    DEFAULT_ANOMALY_CHECK_INTERVAL,
+    DEFAULT_BASELINE_REFRESH_INTERVAL,
+    DEFAULT_LEARNING_MODE,
     SCAN_INTERVAL_DAILY,
     SCAN_INTERVAL_2_DAYS,
     SCAN_INTERVAL_7_DAYS,
     SCAN_INTERVAL_30_DAYS,
+    CONF_ENTITY_COUNT,
+    CONF_STANDARD_CHECK_INTERVAL,
+    CONF_PRIORITY_CHECK_INTERVAL,
+    CONF_ANOMALY_CHECK_INTERVAL,
+    CONF_BASELINE_REFRESH_INTERVAL,
+    CONF_LEARNING_MODE,
+    BASELINE_REFRESH_OPTIONS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -66,6 +79,25 @@ STEP_USER_DATA_SCHEMA = vol.Schema({
         vol.Coerce(int), vol.Range(min=3, max=30)
     ),
     vol.Optional(CONF_DIAGNOSTIC_INTEGRATION, default=DEFAULT_DIAGNOSTIC_INTEGRATION): bool,
+    vol.Optional(CONF_ENTITY_COUNT, default=DEFAULT_ENTITY_COUNT): vol.All(
+        vol.Coerce(int), vol.Range(min=10, max=200)
+    ),
+    vol.Optional(CONF_STANDARD_CHECK_INTERVAL, default=DEFAULT_STANDARD_CHECK_INTERVAL): vol.All(
+        vol.Coerce(int), vol.Range(min=5, max=1440)
+    ),
+    vol.Optional(CONF_PRIORITY_CHECK_INTERVAL, default=DEFAULT_PRIORITY_CHECK_INTERVAL): vol.All(
+        vol.Coerce(int), vol.Range(min=1, max=60)
+    ),
+    vol.Optional(CONF_ANOMALY_CHECK_INTERVAL, default=DEFAULT_ANOMALY_CHECK_INTERVAL): vol.All(
+        vol.Coerce(int), vol.Range(min=60, max=1440)
+    ),
+    vol.Optional(CONF_BASELINE_REFRESH_INTERVAL, default=DEFAULT_BASELINE_REFRESH_INTERVAL): selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=[{"value": k, "label": k} for k in BASELINE_REFRESH_OPTIONS.keys()],
+            mode=selector.SelectSelectorMode.DROPDOWN
+        )
+    ),
+    vol.Optional(CONF_LEARNING_MODE, default=DEFAULT_LEARNING_MODE): bool,
 })
 
 
@@ -118,7 +150,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     def _build_options_schema(self) -> vol.Schema:
         opts: Mapping[str, Any] = self.config_entry.options or {}
         data: Mapping[str, Any] = self.config_entry.data or {}
-        
+        options = self.config_entry.options
         return vol.Schema({
             vol.Required(
                 CONF_API_KEY,
@@ -169,6 +201,25 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 CONF_DIAGNOSTIC_INTEGRATION,
                 default=opts.get(CONF_DIAGNOSTIC_INTEGRATION, data.get(CONF_DIAGNOSTIC_INTEGRATION, DEFAULT_DIAGNOSTIC_INTEGRATION))
             ): bool,
+            vol.Optional(CONF_ENTITY_COUNT, default=options.get(CONF_ENTITY_COUNT)): vol.All(
+                vol.Coerce(int), vol.Range(min=10, max=200)
+            ),
+            vol.Optional(CONF_STANDARD_CHECK_INTERVAL, default=options.get(CONF_STANDARD_CHECK_INTERVAL)): vol.All(
+                vol.Coerce(int), vol.Range(min=5, max=1440)
+            ),
+            vol.Optional(CONF_PRIORITY_CHECK_INTERVAL, default=options.get(CONF_PRIORITY_CHECK_INTERVAL)): vol.All(
+                vol.Coerce(int), vol.Range(min=1, max=60)
+            ),
+            vol.Optional(CONF_ANOMALY_CHECK_INTERVAL, default=options.get(CONF_ANOMALY_CHECK_INTERVAL)): vol.All(
+                vol.Coerce(int), vol.Range(min=60, max=1440)
+            ),
+            vol.Optional(CONF_BASELINE_REFRESH_INTERVAL, default=options.get(CONF_BASELINE_REFRESH_INTERVAL)): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[{"value": k, "label": k} for k in BASELINE_REFRESH_OPTIONS.keys()],
+                    mode=selector.SelectSelectorMode.DROPDOWN
+                )
+            ),
+            vol.Optional(CONF_LEARNING_MODE, default=options.get(CONF_LEARNING_MODE)): bool,
         })
 
     async def async_step_init(

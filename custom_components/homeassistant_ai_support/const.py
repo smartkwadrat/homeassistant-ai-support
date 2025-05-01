@@ -1,5 +1,6 @@
 """Constants for the Home Assistant AI Support integration."""
 from homeassistant.helpers.storage import Store
+from homeassistant.const import UnitOfTime
 
 DOMAIN = "homeassistant_ai_support"
 
@@ -13,12 +14,26 @@ CONF_LOG_LEVELS = "log_levels"
 CONF_MAX_REPORTS = "max_reports"
 CONF_DIAGNOSTIC_INTEGRATION = "diagnostic_integration"
 
+# Anomaly detection configuration
+CONF_ENTITY_COUNT = "entity_count"
+CONF_STANDARD_CHECK_INTERVAL = "standard_check_interval"
+CONF_PRIORITY_CHECK_INTERVAL = "priority_check_interval"
+CONF_ANOMALY_CHECK_INTERVAL = "anomaly_check_interval"
+CONF_BASELINE_REFRESH_INTERVAL = "baseline_refresh_interval"
+CONF_LEARNING_MODE = "learning_mode"
+
 # Wartości domyślne
 DEFAULT_SCAN_INTERVAL = 24
 DEFAULT_COST_OPTIMIZATION = False
 DEFAULT_MAX_REPORTS = 10
 DEFAULT_DIAGNOSTIC_INTEGRATION = True
-DEFAULT_LOG_LEVELS = ["ERROR", "WARNING"]
+DEFAULT_LOG_LEVELS = ["CRITICAL", "ERROR", "WARNING"]
+DEFAULT_ENTITY_COUNT = 20
+DEFAULT_STANDARD_CHECK_INTERVAL = 60  # minutes
+DEFAULT_PRIORITY_CHECK_INTERVAL = 15  # minutes
+DEFAULT_ANOMALY_CHECK_INTERVAL = 60  # minutes
+DEFAULT_BASELINE_REFRESH_INTERVAL = "14_days"
+DEFAULT_LEARNING_MODE = False
 
 # Mapowanie modeli
 MODEL_MAPPING = {
@@ -46,10 +61,10 @@ SCAN_INTERVAL_7_DAYS = "7_days"
 SCAN_INTERVAL_30_DAYS = "30_days"
 
 SCAN_INTERVAL_OPTIONS = {
-    SCAN_INTERVAL_DAILY: 1,  # 1 dzień
-    SCAN_INTERVAL_2_DAYS: 2,  # 2 dni
-    SCAN_INTERVAL_7_DAYS: 7,  # 7 dni
-    SCAN_INTERVAL_30_DAYS: 30,  # 30 dni
+    SCAN_INTERVAL_DAILY: 1,
+    SCAN_INTERVAL_2_DAYS: 2,
+    SCAN_INTERVAL_7_DAYS: 7,
+    SCAN_INTERVAL_30_DAYS: 30,
 }
 
 DEFAULT_SCAN_INTERVAL = SCAN_INTERVAL_7_DAYS  # Domyślnie co 7 dni
@@ -57,3 +72,23 @@ DEFAULT_SCAN_INTERVAL = SCAN_INTERVAL_7_DAYS  # Domyślnie co 7 dni
 # Godzina generowania raportu (23:50)
 REPORT_GENERATION_HOUR = 23
 REPORT_GENERATION_MINUTE = 50
+
+# Baseline refresh options
+BASELINE_REFRESH_OPTIONS = {
+    "3_days": 3,
+    "7_days": 7,
+    "14_days": 14,
+    "30_days": 30,
+}
+
+# Logging constants
+ANOMALY_LOG_DIR = "ai_anomaly_logs"
+FALSE_ALARM_LOG_FILE = "false_alarms.json"
+REJECTED_ANOMALIES_FILE = "rejected_anomalies.json"
+
+# Sensor attributes
+ATTR_LAST_ANOMALY = "last_anomaly"
+ATTR_FALSE_ALARMS = "false_alarms"
+ATTR_SENSITIVITY = "current_sensitivity"
+
+ENTITY_CATEGORY_DIAGNOSTIC = "diagnostic"

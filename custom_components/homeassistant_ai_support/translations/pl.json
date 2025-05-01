@@ -12,7 +12,13 @@
             "cost_optimization": "Optymalizacja kosztów",
             "log_levels": "Poziomy logów",
             "max_reports": "Maksymalna liczba raportów",
-            "diagnostic_integration": "Integracja diagnostyczna"
+            "diagnostic_integration": "Integracja diagnostyczna",
+            "entity_count": "Liczba encji do monitorowania",
+            "standard_check_interval": "Interwał sprawdzania standardowych (minuty)",
+            "priority_check_interval": "Interwał sprawdzania priorytetowych (minuty)",
+            "anomaly_check_interval": "Interwał wykrywania anomalii (minuty)",
+            "baseline_refresh_interval": "Interwał odświeżania baseline",
+            "learning_mode": "Tryb nauki"
           }
         },
         "error": {
@@ -35,7 +41,13 @@
             "cost_optimization": "Optymalizacja kosztów",
             "log_levels": "Poziomy logów",
             "max_reports": "Maksymalna liczba raportów",
-            "diagnostic_integration": "Integracja diagnostyczna"
+            "diagnostic_integration": "Integracja diagnostyczna",
+            "entity_count": "Liczba encji do monitorowania",
+            "standard_check_interval": "Interwał sprawdzania standardowych (minuty)",
+            "priority_check_interval": "Interwał sprawdzania priorytetowych (minuty)",
+            "anomaly_check_interval": "Interwał wykrywania anomalii (minuty)",
+            "baseline_refresh_interval": "Interwał odświeżania baseline",
+            "learning_mode": "Tryb nauki"
           }
         }
       }
@@ -47,6 +59,16 @@
           "2_days": "Co 2 dni",
           "7_days": "Co 7 dni",
           "30_days": "Co 30 dni"
+        }
+      }
+    },
+    "entity": {
+      "sensor": {
+        "entity_discovery_status": {
+          "name": "Status wykrywania encji"
+        },
+        "anomaly_detection_status": {
+          "name": "Status wykrywania anomalii"
         }
       }
     }
