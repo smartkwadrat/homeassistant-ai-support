@@ -46,6 +46,8 @@ from .const import (
     SCAN_INTERVAL_7_DAYS,
     SCAN_INTERVAL_30_DAYS,
     BASELINE_REFRESH_OPTIONS,
+    STANDARD_CHECK_INTERVAL_OPTIONS,
+    PRIORITY_CHECK_INTERVAL_OPTIONS
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -91,18 +93,35 @@ STEP_USER_DATA_SCHEMA = vol.Schema({
     vol.Optional(CONF_ENTITY_COUNT, default=DEFAULT_ENTITY_COUNT): vol.All(
         vol.Coerce(int), vol.Range(min=10, max=200)
     ),
-    vol.Optional(CONF_STANDARD_CHECK_INTERVAL, default=DEFAULT_STANDARD_CHECK_INTERVAL): vol.All(
-        vol.Coerce(int), vol.Range(min=5, max=1440)
+    vol.Optional(CONF_STANDARD_CHECK_INTERVAL, default=DEFAULT_STANDARD_CHECK_INTERVAL): selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=[
+                selector.SelectOptionDict(value=k, label=v)
+                for k, v in STANDARD_CHECK_INTERVAL_OPTIONS.items()
+            ],
+            mode=selector.SelectSelectorMode.DROPDOWN,
+            translation_key="standard_check_interval_options"
+        ),
     ),
-    vol.Optional(CONF_PRIORITY_CHECK_INTERVAL, default=DEFAULT_PRIORITY_CHECK_INTERVAL): vol.All(
-        vol.Coerce(int), vol.Range(min=1, max=60)
+    vol.Optional(CONF_PRIORITY_CHECK_INTERVAL, default=DEFAULT_PRIORITY_CHECK_INTERVAL): selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=[
+                selector.SelectOptionDict(value=k, label=v)
+                for k, v in PRIORITY_CHECK_INTERVAL_OPTIONS.items()
+            ],
+            mode=selector.SelectSelectorMode.DROPDOWN,
+            translation_key="priority_check_interval_options"
+        ),
     ),
     vol.Optional(CONF_ANOMALY_CHECK_INTERVAL, default=DEFAULT_ANOMALY_CHECK_INTERVAL): vol.All(
         vol.Coerce(int), vol.Range(min=60, max=1440)
     ),
     vol.Optional(CONF_BASELINE_REFRESH_INTERVAL, default=DEFAULT_BASELINE_REFRESH_INTERVAL): selector.SelectSelector(
         selector.SelectSelectorConfig(
-            options=[{"value": k, "label": k} for k in BASELINE_REFRESH_OPTIONS.keys()],
+            options=[
+                selector.SelectOptionDict(value=k, label=f"baseline_refresh_options.options.{k}")
+                for k in BASELINE_REFRESH_OPTIONS.keys()
+            ],
             mode=selector.SelectSelectorMode.DROPDOWN,
             translation_key="baseline_refresh_options"
         )
@@ -228,14 +247,26 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 CONF_ENTITY_COUNT,
                 default=opts.get(CONF_ENTITY_COUNT, data.get(CONF_ENTITY_COUNT, DEFAULT_ENTITY_COUNT))
             ): vol.All(vol.Coerce(int), vol.Range(min=10, max=200)),
-            vol.Optional(
-                CONF_STANDARD_CHECK_INTERVAL,
-                default=opts.get(CONF_STANDARD_CHECK_INTERVAL, data.get(CONF_STANDARD_CHECK_INTERVAL, DEFAULT_STANDARD_CHECK_INTERVAL))
-            ): vol.All(vol.Coerce(int), vol.Range(min=5, max=1440)),
-            vol.Optional(
-                CONF_PRIORITY_CHECK_INTERVAL,
-                default=opts.get(CONF_PRIORITY_CHECK_INTERVAL, data.get(CONF_PRIORITY_CHECK_INTERVAL, DEFAULT_PRIORITY_CHECK_INTERVAL))
-            ): vol.All(vol.Coerce(int), vol.Range(min=1, max=60)),
+            vol.Optional(CONF_STANDARD_CHECK_INTERVAL, default=DEFAULT_STANDARD_CHECK_INTERVAL): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=k, label=v)
+                        for k, v in STANDARD_CHECK_INTERVAL_OPTIONS.items()
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                    translation_key="standard_check_interval_options"
+                )
+            ),
+            vol.Optional(CONF_PRIORITY_CHECK_INTERVAL, default=DEFAULT_PRIORITY_CHECK_INTERVAL): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=k, label=v)
+                        for k, v in PRIORITY_CHECK_INTERVAL_OPTIONS.items()
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                    translation_key="priority_check_interval_options"
+                )
+            ),
             vol.Optional(
                 CONF_ANOMALY_CHECK_INTERVAL,
                 default=opts.get(CONF_ANOMALY_CHECK_INTERVAL, data.get(CONF_ANOMALY_CHECK_INTERVAL, DEFAULT_ANOMALY_CHECK_INTERVAL))

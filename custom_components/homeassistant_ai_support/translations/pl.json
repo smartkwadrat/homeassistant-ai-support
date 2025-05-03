@@ -14,8 +14,8 @@
             "max_reports": "Maksymalna liczba raportów",
             "diagnostic_integration": "Integracja diagnostyczna",
             "entity_count": "Liczba encji do monitorowania",
-            "standard_check_interval": "Interwał sprawdzania standardowych (minuty)",
-            "priority_check_interval": "Interwał sprawdzania priorytetowych (minuty)",
+            "standard_check_interval": "Interwał sprawdzania standardowych encji",
+            "priority_check_interval": "Interwał sprawdzania priorytetowych encji",
             "anomaly_check_interval": "Interwał wykrywania anomalii (minuty)",
             "baseline_refresh_interval": "Interwał odświeżania baseline",
             "learning_mode": "Tryb nauki"
@@ -43,8 +43,8 @@
             "max_reports": "Maksymalna liczba raportów",
             "diagnostic_integration": "Integracja diagnostyczna",
             "entity_count": "Liczba encji do monitorowania",
-            "standard_check_interval": "Interwał sprawdzania standardowych (minuty)",
-            "priority_check_interval": "Interwał sprawdzania priorytetowych (minuty)",
+            "standard_check_interval": "Interwał sprawdzania standardowych encji",
+            "priority_check_interval": "Interwał sprawdzania priorytetowych encji",
             "anomaly_check_interval": "Interwał wykrywania anomalii (minuty)",
             "baseline_refresh_interval": "Interwał odświeżania baseline",
             "learning_mode": "Tryb nauki"
@@ -76,6 +76,22 @@
         "7_days": "Co 7 dni",
         "14_days": "Co 14 dni",
         "30_days": "Co 30 dni"
+      }
+    },
+    "standard_check_interval_options": {
+      "options": {
+        "30": "Co 30 min",
+        "60": "Co 60 min",
+        "120": "Co 2 godziny",
+        "240": "Co 4 godziny"
+      }
+    },
+    "priority_check_interval_options": {
+      "options": {
+        "1": "Co 1 min",
+        "5": "Co 5 min",
+        "15": "Co 15 min",
+        "30": "Co 30 min"
       }
     },
     "entity": {

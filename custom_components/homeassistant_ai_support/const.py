@@ -86,6 +86,21 @@ ANOMALY_LOG_DIR = "ai_anomaly_logs"
 FALSE_ALARM_LOG_FILE = "false_alarms.json"
 REJECTED_ANOMALIES_FILE = "rejected_anomalies.json"
 
+STANDARD_CHECK_INTERVAL_OPTIONS = {
+    "30": "Co 30 min",
+    "60": "Co 60 min",
+    "120": "Co 2 godziny",
+    "240": "Co 4 godziny",
+}
+PRIORITY_CHECK_INTERVAL_OPTIONS = {
+    "1": "Co 1 min",
+    "5": "Co 5 min",
+    "15": "Co 15 min",
+    "30": "Co 30 min",
+}
+DEFAULT_STANDARD_CHECK_INTERVAL = "60" 
+DEFAULT_PRIORITY_CHECK_INTERVAL = "15"
+
 # Sensor attributes
 ATTR_LAST_ANOMALY = "last_anomaly"
 ATTR_FALSE_ALARMS = "false_alarms"

@@ -95,16 +95,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN]["coordinator"] = ai_coordinator
         hass.data[DOMAIN]["entities"] = []
 
-        # Rejestracja nowych encji
-        sensors = [
-            EntityDiscoverySensor(ai_coordinator),
-            AnomalyDetectionSensor(ai_coordinator)
-        ]
-        buttons = [
-            DiscoverEntitiesButton(ai_coordinator),
-            BuildBaselineButton(ai_coordinator)
-        ]
-
         entry.async_on_unload(entry.add_update_listener(options_update_listener))
 
         # Rejestracja platform

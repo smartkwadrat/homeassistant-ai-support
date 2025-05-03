@@ -14,8 +14,8 @@
             "max_reports": "Maximum Reports",
             "diagnostic_integration": "Diagnostic Integration",
             "entity_count": "Entities to Monitor",
-            "standard_check_interval": "Standard Check Interval (minutes)",
-            "priority_check_interval": "Priority Check Interval (minutes)",
+            "standard_check_interval": "Standard Entities Check Interval",
+            "priority_check_interval": "Priority Entities Check Interval",
             "anomaly_check_interval": "Anomaly Check Interval (minutes)",
             "baseline_refresh_interval": "Baseline Refresh Interval",
             "learning_mode": "Learning Mode"
@@ -43,8 +43,8 @@
             "max_reports": "Maximum Reports",
             "diagnostic_integration": "Diagnostic Integration",
             "entity_count": "Entities to Monitor",
-            "standard_check_interval": "Standard Check Interval (minutes)",
-            "priority_check_interval": "Priority Check Interval (minutes)",
+            "standard_check_interval": "Standard Entities Check Interval",
+            "priority_check_interval": "Priority Entities Check Interval",
             "anomaly_check_interval": "Anomaly Check Interval (minutes)",
             "baseline_refresh_interval": "Baseline Refresh Interval",
             "learning_mode": "Learning Mode"
@@ -77,7 +77,23 @@
           "14_days": "Every 14 days",
           "30_days": "Every 30 days"
         }
-      },
+    },
+    "standard_check_interval_options": {
+      "options": {
+        "30": "Every 30 min",
+        "60": "Every 60 min",
+        "120": "Every 2 hours",
+        "240": "Every 4 hours"
+      }
+    },
+    "priority_check_interval_options": {
+      "options": {
+        "1": "Every 1 min",
+        "5": "Every 5 min",
+        "15": "Every 15 min",
+        "30": "Every 30 min"
+      }
+    },
     "entity": {
       "sensor": {
         "entity_discovery_status": {

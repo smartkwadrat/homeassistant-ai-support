@@ -86,7 +86,8 @@ class OpenAIAnalyzer:
                 _LOGGER.error("Błąd żądania OpenAI: %s (kod: %s)", error_message, error_code)
             
                 # Sprawdzamy, czy to błąd dostępu do modelu
-                if error_code == "model_not_found" or "does not exist or you do not have access to it" or "does not have access to model" in error_message:
+                if (error_code == "model_not_found" or "does not exist or you do not have access to it" in error_message or "does not have access to model" in error_message):
+
                     _LOGGER.warning("Brak dostępu do modelu %s", current_model)
                 
                     # Próbujemy użyć modelu zastępczego, jeśli dostępny i nie przekroczyliśmy limitu prób
