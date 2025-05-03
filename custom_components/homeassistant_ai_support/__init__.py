@@ -539,7 +539,7 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         _LOGGER.info("Zapisano raport do pliku: %s", report_path)
 
     async def _cleanup_old_reports(self) -> None:
-        max_reports = self.entry.options.get(CONF_MAX_REPORTS, 10)
+        max_reports = self.entry.options.get(CONF_MAX_REPORTS, "10")
         report_dir = Path(self.hass.config.path("ai_reports"))
         exists = await self.hass.async_add_executor_job(
             lambda: report_dir.exists()

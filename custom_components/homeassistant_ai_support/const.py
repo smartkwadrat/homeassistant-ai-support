@@ -25,7 +25,7 @@ CONF_LEARNING_MODE = "learning_mode"
 # Wartości domyślne
 DEFAULT_SCAN_INTERVAL = 24
 DEFAULT_COST_OPTIMIZATION = False
-DEFAULT_MAX_REPORTS = 10
+DEFAULT_MAX_REPORTS = "10"
 DEFAULT_DIAGNOSTIC_INTEGRATION = True
 DEFAULT_LOG_LEVELS = ["CRITICAL", "ERROR", "WARNING"]
 DEFAULT_ENTITY_COUNT = 20
@@ -75,10 +75,10 @@ REPORT_GENERATION_MINUTE = 50
 
 # Baseline refresh options
 BASELINE_REFRESH_OPTIONS = {
-    "3_days": 3,
-    "7_days": 7,
-    "14_days": 14,
-    "30_days": 30,
+    "3_days": "3",
+    "7_days": "7",
+    "14_days": "14",
+    "30_days": "30",
 }
 
 # Logging constants

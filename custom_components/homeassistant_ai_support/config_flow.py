@@ -78,10 +78,10 @@ STEP_USER_DATA_SCHEMA = vol.Schema({
     vol.Optional(CONF_MAX_REPORTS, default=DEFAULT_MAX_REPORTS): selector.SelectSelector(
         selector.SelectSelectorConfig(
             options=[
-                selector.SelectOptionDict(value=1, label="1"),
-                selector.SelectOptionDict(value=5, label="5"),
-                selector.SelectOptionDict(value=10, label="10"),
-                selector.SelectOptionDict(value=20, label="20"),
+                selector.SelectOptionDict(value="1", label="1"),
+                selector.SelectOptionDict(value="5", label="5"),
+                selector.SelectOptionDict(value="10", label="10"),
+                selector.SelectOptionDict(value="20", label="20"),
             ],
             mode=selector.SelectSelectorMode.DROPDOWN,
             translation_key="max_reports_options"
@@ -207,14 +207,14 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             }),
             vol.Optional(
                 CONF_MAX_REPORTS,
-                default=opts.get(CONF_MAX_REPORTS, data.get(CONF_MAX_REPORTS, DEFAULT_MAX_REPORTS))
+                default=str(opts.get(CONF_MAX_REPORTS, data.get(CONF_MAX_REPORTS, DEFAULT_MAX_REPORTS)))
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=[
-                        selector.SelectOptionDict(value=1, label="1"),
-                        selector.SelectOptionDict(value=5, label="5"),
-                        selector.SelectOptionDict(value=10, label="10"),
-                        selector.SelectOptionDict(value=20, label="20"),
+                        selector.SelectOptionDict(value="1", label="1"),
+                        selector.SelectOptionDict(value="5", label="5"),
+                        selector.SelectOptionDict(value="10", label="10"),
+                        selector.SelectOptionDict(value="20", label="20"),
                     ],
                     mode=selector.SelectSelectorMode.DROPDOWN,
                     translation_key="max_reports_options"
@@ -245,7 +245,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 default=opts.get(CONF_BASELINE_REFRESH_INTERVAL, data.get(CONF_BASELINE_REFRESH_INTERVAL, DEFAULT_BASELINE_REFRESH_INTERVAL))
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
-                    options=[{"value": k, "label": k} for k in BASELINE_REFRESH_OPTIONS.keys()],
+                    options=[{"value": str(k), "label": str(k)} for k in BASELINE_REFRESH_OPTIONS.keys()],
                     mode=selector.SelectSelectorMode.DROPDOWN,
                     translation_key="baseline_refresh_options"
                 )
