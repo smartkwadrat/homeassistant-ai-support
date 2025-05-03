@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.8.1 - 2025-05-03
+## 0.8.2 - 2025-05-03
 
 ### Dodano
 - Nowa funkcja wykrywania encji
