@@ -10,6 +10,8 @@ from homeassistant.components.button import ButtonEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.entity import ENTITY_CATEGORY_DIAGNOSTIC
+
 
 from .const import DOMAIN
 

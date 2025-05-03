@@ -21,6 +21,12 @@ from .const import (
     CONF_LOG_LEVELS,
     CONF_MAX_REPORTS,
     CONF_DIAGNOSTIC_INTEGRATION,
+    CONF_ENTITY_COUNT,
+    CONF_STANDARD_CHECK_INTERVAL,
+    CONF_PRIORITY_CHECK_INTERVAL,
+    CONF_ANOMALY_CHECK_INTERVAL,
+    CONF_BASELINE_REFRESH_INTERVAL,
+    CONF_LEARNING_MODE,
     MODEL_MAPPING,
     DEFAULT_MODEL,
     DEFAULT_SYSTEM_PROMPT,
@@ -39,12 +45,6 @@ from .const import (
     SCAN_INTERVAL_2_DAYS,
     SCAN_INTERVAL_7_DAYS,
     SCAN_INTERVAL_30_DAYS,
-    CONF_ENTITY_COUNT,
-    CONF_STANDARD_CHECK_INTERVAL,
-    CONF_PRIORITY_CHECK_INTERVAL,
-    CONF_ANOMALY_CHECK_INTERVAL,
-    CONF_BASELINE_REFRESH_INTERVAL,
-    CONF_LEARNING_MODE,
     BASELINE_REFRESH_OPTIONS,
 )
 
@@ -75,8 +75,17 @@ STEP_USER_DATA_SCHEMA = vol.Schema({
         "ERROR": "Błędy",
         "CRITICAL": "Krytyczne",
     }),
-    vol.Optional(CONF_MAX_REPORTS, default=DEFAULT_MAX_REPORTS): vol.All(
-        vol.Coerce(int), vol.Range(min=3, max=30)
+    vol.Optional(CONF_MAX_REPORTS, default=DEFAULT_MAX_REPORTS): selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=[
+                selector.SelectOptionDict(value=1, label="1"),
+                selector.SelectOptionDict(value=5, label="5"),
+                selector.SelectOptionDict(value=10, label="10"),
+                selector.SelectOptionDict(value=20, label="20"),
+            ],
+            mode=selector.SelectSelectorMode.DROPDOWN,
+            translation_key="max_reports_options"
+        )
     ),
     vol.Optional(CONF_DIAGNOSTIC_INTEGRATION, default=DEFAULT_DIAGNOSTIC_INTEGRATION): bool,
     vol.Optional(CONF_ENTITY_COUNT, default=DEFAULT_ENTITY_COUNT): vol.All(
@@ -94,7 +103,8 @@ STEP_USER_DATA_SCHEMA = vol.Schema({
     vol.Optional(CONF_BASELINE_REFRESH_INTERVAL, default=DEFAULT_BASELINE_REFRESH_INTERVAL): selector.SelectSelector(
         selector.SelectSelectorConfig(
             options=[{"value": k, "label": k} for k in BASELINE_REFRESH_OPTIONS.keys()],
-            mode=selector.SelectSelectorMode.DROPDOWN
+            mode=selector.SelectSelectorMode.DROPDOWN,
+            translation_key="baseline_refresh_options"
         )
     ),
     vol.Optional(CONF_LEARNING_MODE, default=DEFAULT_LEARNING_MODE): bool,
@@ -110,24 +120,25 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
-            api_key = user_input.get(CONF_API_KEY)
-            if not api_key or not api_key.startswith("sk-") or len(api_key) < 32:
+            api_key = user_input.get(CONF_API_KEY, "")
+            # Allow both sk- and pk- prefixes and enforce minimum length
+            if not (api_key.startswith(("sk-", "pk-")) and len(api_key) >= 40):
                 errors["base"] = "invalid_api_key"
             else:
+                # Split into data and options
+                entry_data = {
+                    CONF_API_KEY: api_key,
+                    CONF_MODEL: user_input[CONF_MODEL],
+                    CONF_SYSTEM_PROMPT: user_input[CONF_SYSTEM_PROMPT],
+                }
+                entry_options = {
+                    k: v for k, v in user_input.items()
+                    if k not in (CONF_API_KEY, CONF_MODEL, CONF_SYSTEM_PROMPT)
+                }
                 return self.async_create_entry(
                     title="AI Support",
-                    data={
-                        CONF_API_KEY: api_key,
-                        CONF_MODEL: user_input[CONF_MODEL],
-                        CONF_SYSTEM_PROMPT: user_input[CONF_SYSTEM_PROMPT],
-                    },
-                    options={
-                        CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL],
-                        CONF_COST_OPTIMIZATION: user_input[CONF_COST_OPTIMIZATION],
-                        CONF_LOG_LEVELS: user_input[CONF_LOG_LEVELS],
-                        CONF_MAX_REPORTS: user_input[CONF_MAX_REPORTS],
-                        CONF_DIAGNOSTIC_INTEGRATION: user_input[CONF_DIAGNOSTIC_INTEGRATION],
-                    },
+                    data=entry_data,
+                    options=entry_options,
                 )
 
         return self.async_show_form(
@@ -144,13 +155,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow for AI Support integration."""
+
     def __init__(self, config_entry: ConfigEntry) -> None:
         self.config_entry = config_entry
 
     def _build_options_schema(self) -> vol.Schema:
         opts: Mapping[str, Any] = self.config_entry.options or {}
         data: Mapping[str, Any] = self.config_entry.data or {}
-        options = self.config_entry.options
+
         return vol.Schema({
             vol.Required(
                 CONF_API_KEY,
@@ -196,30 +208,52 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             vol.Optional(
                 CONF_MAX_REPORTS,
                 default=opts.get(CONF_MAX_REPORTS, data.get(CONF_MAX_REPORTS, DEFAULT_MAX_REPORTS))
-            ): vol.All(vol.Coerce(int), vol.Range(min=3, max=30)),
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=1, label="1"),
+                        selector.SelectOptionDict(value=5, label="5"),
+                        selector.SelectOptionDict(value=10, label="10"),
+                        selector.SelectOptionDict(value=20, label="20"),
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                    translation_key="max_reports_options"
+                )
+            ),
             vol.Optional(
                 CONF_DIAGNOSTIC_INTEGRATION,
                 default=opts.get(CONF_DIAGNOSTIC_INTEGRATION, data.get(CONF_DIAGNOSTIC_INTEGRATION, DEFAULT_DIAGNOSTIC_INTEGRATION))
             ): bool,
-            vol.Optional(CONF_ENTITY_COUNT, default=options.get(CONF_ENTITY_COUNT)): vol.All(
-                vol.Coerce(int), vol.Range(min=10, max=200)
-            ),
-            vol.Optional(CONF_STANDARD_CHECK_INTERVAL, default=options.get(CONF_STANDARD_CHECK_INTERVAL)): vol.All(
-                vol.Coerce(int), vol.Range(min=5, max=1440)
-            ),
-            vol.Optional(CONF_PRIORITY_CHECK_INTERVAL, default=options.get(CONF_PRIORITY_CHECK_INTERVAL)): vol.All(
-                vol.Coerce(int), vol.Range(min=1, max=60)
-            ),
-            vol.Optional(CONF_ANOMALY_CHECK_INTERVAL, default=options.get(CONF_ANOMALY_CHECK_INTERVAL)): vol.All(
-                vol.Coerce(int), vol.Range(min=60, max=1440)
-            ),
-            vol.Optional(CONF_BASELINE_REFRESH_INTERVAL, default=options.get(CONF_BASELINE_REFRESH_INTERVAL)): selector.SelectSelector(
+            vol.Optional(
+                CONF_ENTITY_COUNT,
+                default=opts.get(CONF_ENTITY_COUNT, data.get(CONF_ENTITY_COUNT, DEFAULT_ENTITY_COUNT))
+            ): vol.All(vol.Coerce(int), vol.Range(min=10, max=200)),
+            vol.Optional(
+                CONF_STANDARD_CHECK_INTERVAL,
+                default=opts.get(CONF_STANDARD_CHECK_INTERVAL, data.get(CONF_STANDARD_CHECK_INTERVAL, DEFAULT_STANDARD_CHECK_INTERVAL))
+            ): vol.All(vol.Coerce(int), vol.Range(min=5, max=1440)),
+            vol.Optional(
+                CONF_PRIORITY_CHECK_INTERVAL,
+                default=opts.get(CONF_PRIORITY_CHECK_INTERVAL, data.get(CONF_PRIORITY_CHECK_INTERVAL, DEFAULT_PRIORITY_CHECK_INTERVAL))
+            ): vol.All(vol.Coerce(int), vol.Range(min=1, max=60)),
+            vol.Optional(
+                CONF_ANOMALY_CHECK_INTERVAL,
+                default=opts.get(CONF_ANOMALY_CHECK_INTERVAL, data.get(CONF_ANOMALY_CHECK_INTERVAL, DEFAULT_ANOMALY_CHECK_INTERVAL))
+            ): vol.All(vol.Coerce(int), vol.Range(min=60, max=1440)),
+            vol.Optional(
+                CONF_BASELINE_REFRESH_INTERVAL,
+                default=opts.get(CONF_BASELINE_REFRESH_INTERVAL, data.get(CONF_BASELINE_REFRESH_INTERVAL, DEFAULT_BASELINE_REFRESH_INTERVAL))
+            ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=[{"value": k, "label": k} for k in BASELINE_REFRESH_OPTIONS.keys()],
-                    mode=selector.SelectSelectorMode.DROPDOWN
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                    translation_key="baseline_refresh_options"
                 )
             ),
-            vol.Optional(CONF_LEARNING_MODE, default=options.get(CONF_LEARNING_MODE)): bool,
+            vol.Optional(
+                CONF_LEARNING_MODE,
+                default=opts.get(CONF_LEARNING_MODE, data.get(CONF_LEARNING_MODE, DEFAULT_LEARNING_MODE))
+            ): bool,
         })
 
     async def async_step_init(

@@ -22,7 +22,7 @@
           }
         },
         "error": {
-          "invalid_api_key": "Nieprawidłowy klucz API. Klucz powinien zaczynać się od 'sk-' i mieć co najmniej 32 znaki."
+          "invalid_api_key": "Nieprawidłowy klucz API. Klucz powinien zaczynać się od 'sk-' lub 'pk-' i mieć co najmniej 40 znaków"
         }
       },
       "abort": {
@@ -52,6 +52,14 @@
         }
       }
     },
+    "max_reports_options": {
+      "options": {
+          "1": "1 raport",
+          "5": "5 raportów",
+          "10": "10 raportów",
+          "20": "20 raportów"
+      }
+    },
     "selector": {
       "scan_interval_options": {
         "options": {
@@ -60,6 +68,14 @@
           "7_days": "Co 7 dni",
           "30_days": "Co 30 dni"
         }
+      }
+    },
+    "baseline_refresh_options": {
+    "options": {
+        "3_days": "Co 3 dni",
+        "7_days": "Co 7 dni",
+        "14_days": "Co 14 dni",
+        "30_days": "Co 30 dni"
       }
     },
     "entity": {

@@ -22,7 +22,7 @@
           }
         },
         "error": {
-          "invalid_api_key": "Invalid API key. Key should start with 'sk-' and be at least 32 characters long."
+          "invalid_api_key": "Invalid API key. Key should start with 'sk-' or 'pk-' and be at least 40 characters long."
         }
       },
       "abort": {
@@ -62,6 +62,22 @@
         }
       }
     },
+    "max_reports_options": {
+      "options": {
+        "1": "1 report",
+        "5": "5 reports",
+        "10": "10 reports",
+        "20": "20 reports"
+      }
+    },
+    "baseline_refresh_options": {
+      "options": {
+          "3_days": "Every 3 days",
+          "7_days": "Every 7 days",
+          "14_days": "Every 14 days",
+          "30_days": "Every 30 days"
+        }
+      },
     "entity": {
       "sensor": {
         "entity_discovery_status": {
