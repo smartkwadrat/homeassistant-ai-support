@@ -90,5 +90,3 @@ REJECTED_ANOMALIES_FILE = "rejected_anomalies.json"
 ATTR_LAST_ANOMALY = "last_anomaly"
 ATTR_FALSE_ALARMS = "false_alarms"
 ATTR_SENSITIVITY = "current_sensitivity"
-
-ENTITY_CATEGORY_DIAGNOSTIC = "diagnostic"

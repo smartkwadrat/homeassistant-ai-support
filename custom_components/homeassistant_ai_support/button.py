@@ -10,7 +10,7 @@ from homeassistant.components.button import ButtonEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.helpers.entity import ENTITY_CATEGORY_DIAGNOSTIC
+from homeassistant.const import EntityCategory
 
 
 from .const import DOMAIN
@@ -144,7 +144,7 @@ class DiscoverEntitiesButton(CoordinatorEntity, ButtonEntity):
         super().__init__(coordinator)
         self._attr_name = "Discover Entities"
         self._attr_unique_id = f"{DOMAIN}_discover_entities"
-        self._attr_entity_category = ENTITY_CATEGORY_DIAGNOSTIC
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     async def async_press(self):
         await self.coordinator.start_entity_discovery()
@@ -156,7 +156,7 @@ class BuildBaselineButton(CoordinatorEntity, ButtonEntity):
         super().__init__(coordinator)
         self._attr_name = "Build Baseline"
         self._attr_unique_id = f"{DOMAIN}_build_baseline"
-        self._attr_entity_category = ENTITY_CATEGORY_DIAGNOSTIC
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     async def async_press(self):
         await self.coordinator.start_baseline_building()

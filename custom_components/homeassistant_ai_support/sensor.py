@@ -15,11 +15,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_state_change
 from homeassistant.helpers import entity_registry as er
+from homeassistant.const import EntityCategory
 
-from .const import (
-    DOMAIN, 
-    ENTITY_CATEGORY_DIAGNOSTIC,
-)
+from .const import DOMAIN
 
 # Tłumaczenia głównych statusów
 STATUS_LABELS = {
@@ -303,7 +301,7 @@ class EntityDiscoverySensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._attr_name = "Entity Discovery Status"
         self._attr_unique_id = f"{DOMAIN}_entity_discovery_status"
-        self._attr_entity_category = ENTITY_CATEGORY_DIAGNOSTIC
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def native_value(self):
@@ -320,7 +318,7 @@ class AnomalyDetectionSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._attr_name = "Anomaly Detection Status"
         self._attr_unique_id = f"{DOMAIN}_anomaly_detection_status"
-        self._attr_entity_category = ENTITY_CATEGORY_DIAGNOSTIC
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def native_value(self):
