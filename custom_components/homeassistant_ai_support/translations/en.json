@@ -72,10 +72,10 @@
     },
     "baseline_refresh_options": {
       "options": {
-        "3_days": "Every 3 days",
-        "7_days": "Every 7 days",
-        "14_days": "Every 14 days",
-        "30_days": "Every 30 days"
+        "3": "Every 3 days",
+        "7": "Every 7 days",
+        "14": "Every 14 days",
+        "30": "Every 30 days"
       }
     },
     "standard_check_interval_options": {

@@ -95,7 +95,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "coordinator": coordinator,
             "ai_coordinator": ai_coordinator,
         }
-        hass.data[DOMAIN]["entities"] = []
+        hass.data[DOMAIN][entry.entry_id]["entities"] = []
 
         entry.async_on_unload(entry.add_update_listener(options_update_listener))
 
@@ -123,11 +123,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise ConfigEntryNotReady from err
 
 
-class AIAnalyticsCoordinator:
+class AIAnalyticsCoordinator(DataUpdateCoordinator):
     """Koordinator analizy AI dla Home Assistant."""
     
     def __init__(self, hass, entry):
-        """Initialize the AI Analytics coordinator."""
+        super().__init__(
+            hass,
+            _LOGGER,
+            name="AI Analytics",
+            update_interval=timedelta(minutes=entry.options.get(CONF_ANOMALY_CHECK_INTERVAL, 30)),
+        )
         self.hass = hass
         self.entry = entry
         self.entity_discovery_status = {

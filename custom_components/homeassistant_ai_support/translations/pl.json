@@ -72,10 +72,10 @@
     },
     "baseline_refresh_options": {
       "options": {
-        "3_days": "Co 3 dni",
-        "7_days": "Co 7 dni",
-        "14_days": "Co 14 dni",
-        "30_days": "Co 30 dni"
+        "3": "Co 3 dni",
+        "7": "Co 7 dni",
+        "14": "Co 14 dni",
+        "30": "Co 30 dni"
       }
     },
     "standard_check_interval_options": {

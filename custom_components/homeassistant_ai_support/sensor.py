@@ -35,10 +35,7 @@ STATUS_LABELS = {
     "waiting": {"pl": "Oczekiwanie", "en": "Waiting"},
     "inactive": {"pl": "Nieaktywne", "en": "Inactive"},
     "idle": {"pl": "Nieaktywny", "en": "Idle"},
-    "initialization": {"pl": "Inicjalizacja", "en": "Initialization"},
     "collecting": {"pl": "Zbieranie danych", "en": "Collecting data"},
-    "analyzing": {"pl": "Analiza", "en": "Analyzing"},
-    "saving": {"pl": "Zapisywanie", "en": "Saving"},
     "success": {"pl": "Ukończono", "en": "Completed"},
     "collecting_history": {"pl": "Zbieranie historii", "en": "Collecting history"},
     "analyzing_patterns": {"pl": "Analiza wzorców", "en": "Analyzing patterns"},
@@ -295,8 +292,9 @@ async def async_update(self):
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
     """Konfiguracja platformy sensor."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
-    ai_coordinator = hass.data[DOMAIN][entry.entry_id]["ai_coordinator"]
+    data = hass.data[DOMAIN][entry.entry_id]
+    coordinator = data["coordinator"]
+    ai_coordinator = data["ai_coordinator"]
 
     
     async_add_entities([
