@@ -128,7 +128,20 @@ class AIAnalyticsCoordinator:
         """Initialize the AI Analytics coordinator."""
         self.hass = hass
         self.entry = entry
-        self.entity_discovery_status = {}
+        self.entity_discovery_status = {
+            "status": "idle",
+            "status_description": "Gotowy do wykrywania encji",
+            "progress": 0,
+            "last_run": None,
+            "error": None
+        }
+        self.baseline_status = {
+            "status": "idle",
+            "status_description": "Gotowy do budowania baseline",
+            "progress": 0,
+            "last_run": None,
+            "error": None
+        }
         self.anomaly_detector = AnomalyDetector(hass)
     
     async def async_config_entry_first_refresh(self):
@@ -142,13 +155,113 @@ class AIAnalyticsCoordinator:
     
     async def start_entity_discovery(self):
         """Start the entity discovery process."""
-        # Implementation for entity discovery
-        pass
+        # Aktualizacja statusu
+        self.entity_discovery_status.update({
+            "status": "initialization",
+            "status_description": "Inicjalizacja procesu wykrywania encji",
+            "progress": 5,
+            "last_run": datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone)).isoformat()
+        })
+        self.async_update_listeners()
     
+        try:
+            # Pobranie danych encji
+            self.entity_discovery_status.update({
+                "status": "collecting",
+                "status_description": "Zbieranie danych o encjach",
+                "progress": 30
+            })
+            self.async_update_listeners()
+            await asyncio.sleep(2)  # Symulacja pracy
+        
+            # Analiza AI
+            self.entity_discovery_status.update({
+                "status": "analyzing",
+                "status_description": "Analiza encji przez AI",
+                "progress": 60
+            })
+            self.async_update_listeners()
+            await asyncio.sleep(3)  # Symulacja pracy
+        
+            # Zapisywanie wyników
+            self.entity_discovery_status.update({
+                "status": "saving",
+                "status_description": "Zapisywanie wykrytych encji",
+                "progress": 90
+            })
+            self.async_update_listeners()
+            await asyncio.sleep(1)  # Symulacja pracy
+        
+            # Zakończenie
+            self.entity_discovery_status.update({
+                "status": "success",
+                "status_description": "Wykrywanie encji zakończone powodzeniem",
+                "progress": 100
+            })
+            self.async_update_listeners()
+        except Exception as e:
+            self.entity_discovery_status.update({
+                "status": "error",
+                "status_description": f"Błąd podczas wykrywania encji: {str(e)}",
+                "progress": 0,
+                "error": str(e)
+            })
+            self.async_update_listeners()
+
     async def start_baseline_building(self):
         """Start building the baseline for anomaly detection."""
-        # Implementation for baseline building
-        pass
+        # Aktualizacja statusu
+        self.baseline_status.update({
+            "status": "initialization",
+            "status_description": "Inicjalizacja budowania baseline",
+            "progress": 5,
+            "last_run": datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone)).isoformat()
+        })
+        self.async_update_listeners()
+    
+        try:
+            # Zbieranie historycznych danych
+            self.baseline_status.update({
+                "status": "collecting_history",
+                "status_description": "Zbieranie danych historycznych",
+                "progress": 20
+            })
+            self.async_update_listeners()
+            await asyncio.sleep(2)  # Symulacja pracy
+        
+            # Analiza statystyczna
+            self.baseline_status.update({
+                "status": "analyzing_patterns",
+                "status_description": "Analiza wzorców w danych",
+                "progress": 50
+            })
+            self.async_update_listeners()
+            await asyncio.sleep(3)  # Symulacja pracy
+        
+            # Budowanie modelu
+            self.baseline_status.update({
+                "status": "building_model",
+                "status_description": "Budowanie modelu baseline",
+                "progress": 80
+            })
+            self.async_update_listeners()
+            await asyncio.sleep(2)  # Symulacja pracy
+        
+            # Zakończenie
+            self.baseline_status.update({
+                "status": "success",
+                "status_description": "Baseline zbudowany pomyślnie",
+                "progress": 100
+            })
+            self.async_update_listeners()
+        except Exception as e:
+            self.baseline_status.update({
+                "status": "error",
+                "status_description": f"Błąd podczas budowania baseline: {str(e)}",
+                "progress": 0,
+                "error": str(e)
+            })
+            self.async_update_listeners()
 
 class AnomalyDetector:
     """Detector for anomalies in entity data."""

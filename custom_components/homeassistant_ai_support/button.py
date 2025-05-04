@@ -6,12 +6,12 @@ import asyncio
 import logging
 from datetime import datetime
 import zoneinfo
+
 from homeassistant.components.button import ButtonEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
-
 
 from .const import DOMAIN
 
@@ -91,7 +91,6 @@ class GenerateReportButton(CoordinatorEntity, ButtonEntity):
         """Uruchamia generowanie raportu z automatycznym ponawianiem w przypadku niepowodzenia."""
         max_attempts = 4
         hass = self.hass
-
         self.coordinator.data["status"] = "initialization"
         self.coordinator.data["status_description"] = translate_status("initialization", hass)
         self.coordinator.async_update_listeners()
@@ -104,21 +103,20 @@ class GenerateReportButton(CoordinatorEntity, ButtonEntity):
 
         for attempt in range(max_attempts):
             _LOGGER.info(f"Próba generowania raportu {attempt + 1}/{max_attempts}")
-
             await hass.services.async_call(
                 DOMAIN, "analyze_now", {}
             )
 
             # Poczekaj 4 sekundy
             await asyncio.sleep(4)
-
             # Sprawdź stan sensora
             status_entity = hass.states.get("sensor.ai_support_status_analizy_logow")
             state_val = status_entity.state.lower() if status_entity and status_entity.state else ""
+            
             if any(kw in state_val for kw in active_keywords):
                 _LOGGER.info(f"Raport jest generowany. Status: {status_entity.state}")
-                break  # Przerwij dalsze próby, bo proces się zaczął
-
+                break # Przerwij dalsze próby, bo proces się zaczął
+            
             if attempt < max_attempts - 1:
                 _LOGGER.warning(
                     f"Generowanie raportu nie rozpoczęło się prawidłowo (status: {status_entity.state if status_entity else 'nieznany'}). Ponawiam..."
@@ -128,7 +126,7 @@ class GenerateReportButton(CoordinatorEntity, ButtonEntity):
                     "retry", hass, attempt + 2, max_attempts
                 )
                 self.coordinator.async_update_listeners()
-                await asyncio.sleep(1)  # Krótka pauza przed kolejną próbą
+                await asyncio.sleep(1) # Krótka pauza przed kolejną próbą
             else:
                 _LOGGER.error(
                     f"Nie udało się uruchomić generowania raportu po {max_attempts} próbach"
@@ -139,28 +137,38 @@ class GenerateReportButton(CoordinatorEntity, ButtonEntity):
 
 class DiscoverEntitiesButton(CoordinatorEntity, ButtonEntity):
     _attr_icon = "mdi:magnify"
-
+    _attr_has_entity_name = True
+    
     def __init__(self, coordinator):
         super().__init__(coordinator)
         self._attr_name = "Discover Entities"
         self._attr_unique_id = f"{DOMAIN}_discover_entities"
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
-
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, "ai_support")},
+            name="AI Support",
+            manufacturer="Custom Integration"
+        )
+    
     async def async_press(self):
         await self.coordinator.start_entity_discovery()
 
 class BuildBaselineButton(CoordinatorEntity, ButtonEntity):
     _attr_icon = "mdi:chart-line"
-
+    _attr_has_entity_name = True
+    
     def __init__(self, coordinator):
         super().__init__(coordinator)
         self._attr_name = "Build Baseline"
         self._attr_unique_id = f"{DOMAIN}_build_baseline"
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
-
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, "ai_support")},
+            name="AI Support",
+            manufacturer="Custom Integration"
+        )
+    
     async def async_press(self):
         await self.coordinator.start_baseline_building()
-        
+
 async def async_setup_entry(hass, entry: ConfigEntry, async_add_entities):
     """Konfiguracja platformy button."""
     coordinator = hass.data[DOMAIN][entry.entry_id]

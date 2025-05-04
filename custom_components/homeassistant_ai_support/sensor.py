@@ -34,6 +34,15 @@ STATUS_LABELS = {
     "cancelled": {"pl": "Anulowano", "en": "Cancelled"},
     "waiting": {"pl": "Oczekiwanie", "en": "Waiting"},
     "inactive": {"pl": "Nieaktywne", "en": "Inactive"},
+    "idle": {"pl": "Nieaktywny", "en": "Idle"},
+    "initialization": {"pl": "Inicjalizacja", "en": "Initialization"},
+    "collecting": {"pl": "Zbieranie danych", "en": "Collecting data"},
+    "analyzing": {"pl": "Analiza", "en": "Analyzing"},
+    "saving": {"pl": "Zapisywanie", "en": "Saving"},
+    "success": {"pl": "Ukończono", "en": "Completed"},
+    "collecting_history": {"pl": "Zbieranie historii", "en": "Collecting history"},
+    "analyzing_patterns": {"pl": "Analiza wzorców", "en": "Analyzing patterns"},
+    "building_model": {"pl": "Budowanie modelu", "en": "Building model"},
 }
 
 def get_lang(hass):
@@ -287,29 +296,79 @@ async def async_update(self):
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
     """Konfiguracja platformy sensor."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
+    ai_coordinator = hass.data[DOMAIN]["coordinator"]
+    
     async_add_entities([
         LogAnalysisSensor(coordinator),
         LastReportTimeSensor(coordinator),
         NextReportTimeSensor(coordinator),
-        SelectedReportSensor(hass),  # Dodany sensor do przeglądania raportów przez input_select
+        SelectedReportSensor(hass),
+        EntityDiscoverySensor(ai_coordinator),
+        BaselineBuildingSensor(ai_coordinator),
+        AnomalyDetectionSensor(ai_coordinator),
     ])
 
 class EntityDiscoverySensor(CoordinatorEntity, SensorEntity):
     _attr_icon = "mdi:magnify-scan"
-
+    _attr_has_entity_name = True
+    
     def __init__(self, coordinator):
         super().__init__(coordinator)
-        self._attr_name = "Entity Discovery Status"
+        self._attr_name = "Status wykrywania encji"
         self._attr_unique_id = f"{DOMAIN}_entity_discovery_status"
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
-
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, "ai_support")},
+            name="AI Support",
+            manufacturer="Custom Integration"
+        )
+    
     @property
     def native_value(self):
-        return self.coordinator.entity_discovery_status.get("status", "idle")
-
+        """Zwraca główny status wykrywania encji - przetłumaczony na język użytkownika."""
+        status_key = self.coordinator.entity_discovery_status.get("status", "idle")
+        return translate_status_label(status_key, self.coordinator.hass)
+    
     @property
     def extra_state_attributes(self):
-        return self.coordinator.entity_discovery_status
+        """Dodatkowe atrybuty czujnika."""
+        return {
+            "last_run": self.coordinator.entity_discovery_status.get("last_run"),
+            "status": self.coordinator.entity_discovery_status.get("status"),
+            "status_description": self.coordinator.entity_discovery_status.get("status_description"),
+            "progress": self.coordinator.entity_discovery_status.get("progress", 0),
+            "error": self.coordinator.entity_discovery_status.get("error"),
+        }
+
+class BaselineBuildingSensor(CoordinatorEntity, SensorEntity):
+    _attr_icon = "mdi:chart-bell-curve"
+    _attr_has_entity_name = True
+    
+    def __init__(self, coordinator):
+        super().__init__(coordinator)
+        self._attr_name = "Status budowania baseline"
+        self._attr_unique_id = f"{DOMAIN}_baseline_building_status"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, "ai_support")},
+            name="AI Support",
+            manufacturer="Custom Integration"
+        )
+    
+    @property
+    def native_value(self):
+        """Zwraca główny status budowania baseline - przetłumaczony na język użytkownika."""
+        status_key = self.coordinator.baseline_status.get("status", "idle")
+        return translate_status_label(status_key, self.coordinator.hass)
+    
+    @property
+    def extra_state_attributes(self):
+        """Dodatkowe atrybuty czujnika."""
+        return {
+            "last_run": self.coordinator.baseline_status.get("last_run"),
+            "status": self.coordinator.baseline_status.get("status"),
+            "status_description": self.coordinator.baseline_status.get("status_description"),
+            "progress": self.coordinator.baseline_status.get("progress", 0),
+            "error": self.coordinator.baseline_status.get("error"),
+        }
 
 class AnomalyDetectionSensor(CoordinatorEntity, SensorEntity):
     _attr_icon = "mdi:alert-circle-outline"
