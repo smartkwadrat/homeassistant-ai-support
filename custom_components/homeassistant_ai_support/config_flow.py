@@ -119,8 +119,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema({
     vol.Optional(CONF_BASELINE_REFRESH_INTERVAL, default=DEFAULT_BASELINE_REFRESH_INTERVAL): selector.SelectSelector(
         selector.SelectSelectorConfig(
             options=[
-                selector.SelectOptionDict(value=k, label=f"baseline_refresh_options.options.{k}")
-                for k in BASELINE_REFRESH_OPTIONS.keys()
+                selector.SelectOptionDict(value=k) for k in BASELINE_REFRESH_OPTIONS.keys()
             ],
             mode=selector.SelectSelectorMode.DROPDOWN,
             translation_key="baseline_refresh_options"
@@ -274,13 +273,15 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             vol.Optional(
                 CONF_BASELINE_REFRESH_INTERVAL,
                 default=opts.get(CONF_BASELINE_REFRESH_INTERVAL, data.get(CONF_BASELINE_REFRESH_INTERVAL, DEFAULT_BASELINE_REFRESH_INTERVAL))
-            ): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=[{"value": str(k), "label": str(k)} for k in BASELINE_REFRESH_OPTIONS.keys()],
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                    translation_key="baseline_refresh_options"
-                )
-            ),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(value=k) for k in BASELINE_REFRESH_OPTIONS.keys()
+                        ],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                        translation_key="baseline_refresh_options"
+                    )
+                ),
             vol.Optional(
                 CONF_LEARNING_MODE,
                 default=opts.get(CONF_LEARNING_MODE, data.get(CONF_LEARNING_MODE, DEFAULT_LEARNING_MODE))

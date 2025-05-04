@@ -91,8 +91,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await ai_coordinator.async_config_entry_first_refresh()
         
         # Przechowywanie obu koordynatorów i inicjalizacja listy encji
-        hass.data[DOMAIN][entry.entry_id] = coordinator
-        hass.data[DOMAIN]["coordinator"] = ai_coordinator
+        hass.data[DOMAIN][entry.entry_id] = {
+            "coordinator": coordinator,
+            "ai_coordinator": ai_coordinator,
+        }
         hass.data[DOMAIN]["entities"] = []
 
         entry.async_on_unload(entry.add_update_listener(options_update_listener))
@@ -347,12 +349,17 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor", "button"])
     if unload_ok:
-        if entry.entry_id in hass.data[DOMAIN]:
-            coordinator = hass.data[DOMAIN].pop(entry.entry_id)
-            # Zatrzymaj zaplanowane zadanie
-            if hasattr(coordinator, "_remove_update_listener") and coordinator._remove_update_listener:
+        data = hass.data[DOMAIN].pop(entry.entry_id, None)
+        if data:
+            coordinator = data.get("coordinator")
+            ai_coordinator = data.get("ai_coordinator")
+            # Zatrzymaj zaplanowane zadanie dla coordinatora
+            if coordinator and hasattr(coordinator, "_remove_update_listener") and coordinator._remove_update_listener:
                 coordinator._remove_update_listener()
-            await coordinator.analyzer.close()
+            if coordinator and hasattr(coordinator, "analyzer"):
+                await coordinator.analyzer.close()
+            if ai_coordinator and hasattr(ai_coordinator, "close"):
+                await ai_coordinator.close()
     return unload_ok
 
 class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):

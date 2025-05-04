@@ -295,8 +295,9 @@ async def async_update(self):
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
     """Konfiguracja platformy sensor."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
-    ai_coordinator = hass.data[DOMAIN]["coordinator"]
+    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    ai_coordinator = hass.data[DOMAIN][entry.entry_id]["ai_coordinator"]
+
     
     async_add_entities([
         LogAnalysisSensor(coordinator),
@@ -315,7 +316,7 @@ class EntityDiscoverySensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator):
         super().__init__(coordinator)
         self._attr_name = "Status wykrywania encji"
-        self._attr_unique_id = f"{DOMAIN}_entity_discovery_status"
+        self._attr_unique_id = f"homeassistant_ai_support.entity_discovery_status"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, "ai_support")},
             name="AI Support",
@@ -346,7 +347,7 @@ class BaselineBuildingSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator):
         super().__init__(coordinator)
         self._attr_name = "Status budowania baseline"
-        self._attr_unique_id = f"{DOMAIN}_baseline_building_status"
+        self._attr_unique_id = f"homeassistant_ai_support.baseline_building_status"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, "ai_support")},
             name="AI Support",
@@ -376,8 +377,12 @@ class AnomalyDetectionSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator):
         super().__init__(coordinator)
         self._attr_name = "Anomaly Detection Status"
-        self._attr_unique_id = f"{DOMAIN}_anomaly_detection_status"
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_unique_id = f"homeassistant_ai_support.anomaly_detection_status"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, "ai_support")},
+            name="AI Support",
+            manufacturer="Custom Integration"
+        )
 
     @property
     def native_value(self):
