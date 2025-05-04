@@ -258,37 +258,37 @@ class SelectedReportSensor(SensorEntity):
     def extra_state_attributes(self):
         return self._attr_extra_state_attributes
 
-async def async_update(self):
-    entity_id = "input_select.ai_support_report_file"
-    selected = self.hass.states.get(entity_id)
+    async def async_update(self):
+        entity_id = "input_select.ai_support_report_file"
+        selected = self.hass.states.get(entity_id)
 
-    if not selected or selected.state in ("unknown", "Brak raportów"):
-        self._state = self._no_report_msg
-        self._attr_extra_state_attributes = {}
-        return
+        if not selected or selected.state in ("unknown", "Brak raportów"):
+            self._state = self._no_report_msg
+            self._attr_extra_state_attributes = {}
+            return
 
-    file_name = selected.state
-    self._state = file_name
-    file_path = Path(self.hass.config.path("ai_reports")) / file_name
+        file_name = selected.state
+        self._state = file_name
+        file_path = Path(self.hass.config.path("ai_reports")) / file_name
 
-    if not await self.hass.async_add_executor_job(lambda: file_path.exists()):
-        self._state = self._no_report_msg
-        self._attr_extra_state_attributes = {}
-        return
+        if not await self.hass.async_add_executor_job(lambda: file_path.exists()):
+            self._state = self._no_report_msg
+            self._attr_extra_state_attributes = {}
+            return
 
-    try:
-        async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
-            data = json.loads(await f.read())
-        self._attr_extra_state_attributes = {
-            "timestamp": data.get("timestamp"),
-            "report": data.get("report", ""),
-            "log_snippet": data.get("log_snippet", "")
-        }
-    except Exception as e:
-        lang = get_lang(self.hass)
-        error_msg = f"Błąd: {e}" if lang == "pl" else f"Error: {e}"
-        self._state = error_msg
-        self._attr_extra_state_attributes = {}
+        try:
+            async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
+                data = json.loads(await f.read())
+            self._attr_extra_state_attributes = {
+                "timestamp": data.get("timestamp"),
+                "report": data.get("report", ""),
+                "log_snippet": data.get("log_snippet", "")
+            }
+        except Exception as e:
+            lang = get_lang(self.hass)
+            error_msg = f"Błąd: {e}" if lang == "pl" else f"Error: {e}"
+            self._state = error_msg
+            self._attr_extra_state_attributes = {}
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
     """Konfiguracja platformy sensor."""

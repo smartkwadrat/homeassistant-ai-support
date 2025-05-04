@@ -119,8 +119,9 @@ STEP_USER_DATA_SCHEMA = vol.Schema({
     vol.Optional(CONF_BASELINE_REFRESH_INTERVAL, default=DEFAULT_BASELINE_REFRESH_INTERVAL): selector.SelectSelector(
         selector.SelectSelectorConfig(
             options=[
-                selector.SelectOptionDict(value=k) for k in BASELINE_REFRESH_OPTIONS.keys()
-            ],
+                selector.SelectOptionDict(value=k, label=v)
+                for k, v in BASELINE_REFRESH_OPTIONS.items()
+        ],
             mode=selector.SelectSelectorMode.DROPDOWN,
             translation_key="baseline_refresh_options"
         )
@@ -276,7 +277,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=[
-                            selector.SelectOptionDict(value=k) for k in BASELINE_REFRESH_OPTIONS.keys()
+                            selector.SelectOptionDict(value=k, label=v)
+                            for k, v in BASELINE_REFRESH_OPTIONS.items()
                         ],
                         mode=selector.SelectSelectorMode.DROPDOWN,
                         translation_key="baseline_refresh_options"

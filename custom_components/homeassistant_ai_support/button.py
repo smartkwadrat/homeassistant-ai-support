@@ -170,11 +170,10 @@ class BuildBaselineButton(CoordinatorEntity, ButtonEntity):
         await self.coordinator.start_baseline_building()
 
 async def async_setup_entry(hass, entry: ConfigEntry, async_add_entities):
-    """Konfiguracja platformy button."""
-    hass.data[DOMAIN][entry.entry_id] = {
-        "coordinator": coordinator,
-        "ai_coordinator": ai_coordinator,
-    }
+    data = hass.data[DOMAIN][entry.entry_id]
+    coordinator = data["coordinator"]
+    ai_coordinator = data["ai_coordinator"]
+
     async_add_entities([
         GenerateReportButton(coordinator),
         DiscoverEntitiesButton(coordinator),

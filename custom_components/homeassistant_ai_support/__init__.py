@@ -279,6 +279,7 @@ class AnomalyDetector:
         self.false_alarm_count = 0
         self.current_sensitivity = 3.0  # Default 3 sigma
         self.last_anomaly_time = None
+        self.detected_anomalies = []
         
     async def detect(self):
         """Detect anomalies in entity data."""
