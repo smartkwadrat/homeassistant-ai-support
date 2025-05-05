@@ -24,7 +24,10 @@ class OpenAIAnalyzer:
         max_tokens: int = 2000
     ):
         self.hass = hass
-        self.httpx_client = httpx.AsyncClient(timeout=60.0)  # Zwiększony timeout
+        async def async_init_client(self):
+            def create_client():
+                return httpx.AsyncClient(timeout=60.0)
+            self.httpx_client = await self.hass.async_add_executor_job(create_client)
         self.client = AsyncOpenAI(
             api_key=api_key,
             max_retries=3,  # Zwiększona liczba prób

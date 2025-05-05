@@ -6,7 +6,8 @@ import json
 from pathlib import Path
 from datetime import datetime
 import zoneinfo
-import aiofiles
+import logging
+_LOGGER = logging.getLogger(__name__)
 
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -14,12 +15,10 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_state_change
-from homeassistant.helpers import entity_registry as er
 from homeassistant.const import EntityCategory
 
 from .const import DOMAIN
 
-# Tłumaczenia głównych statusów
 STATUS_LABELS = {
     "initialization": {"pl": "Inicjalizacja", "en": "Initialization"},
     "retry": {"pl": "Ponowna próba", "en": "Retry"},
@@ -29,14 +28,13 @@ STATUS_LABELS = {
     "filtering_logs": {"pl": "Filtrowanie logów", "en": "Filtering logs"},
     "analyzing": {"pl": "Analiza", "en": "Analyzing"},
     "saving": {"pl": "Zapisywanie", "en": "Saving"},
-    "success": {"pl": "Gotowe", "en": "Success"},
+    "success": {"pl": "Ukończono", "en": "Completed"},
     "no_logs": {"pl": "Brak logów", "en": "No logs"},
     "cancelled": {"pl": "Anulowano", "en": "Cancelled"},
     "waiting": {"pl": "Oczekiwanie", "en": "Waiting"},
     "inactive": {"pl": "Nieaktywne", "en": "Inactive"},
     "idle": {"pl": "Nieaktywny", "en": "Idle"},
     "collecting": {"pl": "Zbieranie danych", "en": "Collecting data"},
-    "success": {"pl": "Ukończono", "en": "Completed"},
     "collecting_history": {"pl": "Zbieranie historii", "en": "Collecting history"},
     "analyzing_patterns": {"pl": "Analiza wzorców", "en": "Analyzing patterns"},
     "building_model": {"pl": "Budowanie modelu", "en": "Building model"},
@@ -65,6 +63,7 @@ class LogAnalysisSensor(CoordinatorEntity, SensorEntity):
             name="AI Support",
             manufacturer="Custom Integration"
         )
+        self._latest_report = {}
 
     @property
     def native_value(self) -> str:
@@ -75,22 +74,6 @@ class LogAnalysisSensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict:
         """Dodatkowe atrybuty czujnika."""
-        report_dir = Path(self.coordinator.hass.config.path("ai_reports"))
-        latest_report = {}
-
-        if report_dir.exists():
-            report_files = sorted(
-                report_dir.glob("report_*.json"),
-                key=lambda f: f.stat().st_ctime,
-                reverse=True
-            )
-            if report_files:
-                try:
-                    with report_files[0].open(encoding="utf-8") as f:
-                        latest_report = json.load(f)
-                except Exception:
-                    latest_report = {}
-
         attrs = {
             "last_run": self.coordinator.data.get("last_run"),
             "next_scheduled_run": self.coordinator.data.get("next_scheduled_run"),
@@ -98,8 +81,8 @@ class LogAnalysisSensor(CoordinatorEntity, SensorEntity):
             "status_description": self._translated_status_description(),
             "progress": self.coordinator.data.get("progress", 0),
             "error": self.coordinator.data.get("error"),
-            "report": latest_report.get("report", ""),
-            "timestamp": latest_report.get("timestamp", ""),
+            "report": self._latest_report.get("report", ""),
+            "timestamp": self._latest_report.get("timestamp", ""),
         }
 
         # Jeśli raport jest generowany, dodaj informację o czasie trwania procesu
@@ -129,6 +112,28 @@ class LogAnalysisSensor(CoordinatorEntity, SensorEntity):
                 return translate_status_label(key, self.coordinator.hass)
         return description
 
+    async def async_update(self):
+        """Aktualizuj dane czujnika, w tym raport."""
+        report_dir = Path(self.coordinator.hass.config.path("ai_reports"))
+        self._latest_report = {}
+        if report_dir.exists():
+            report_files = sorted(
+                report_dir.glob("report_*.json"),
+                key=lambda f: f.stat().st_ctime,
+                reverse=True
+            )
+            if report_files:
+                def _load_json(path):
+                    with path.open(encoding="utf-8") as f:
+                        return json.load(f)
+                try:
+                    self._latest_report = await self.coordinator.hass.async_add_executor_job(
+                        _load_json, report_files[0]
+                    )
+                except Exception as e:
+                    _LOGGER.error(f"Błąd odczytu raportu: {e}")
+                    self._latest_report = {}
+
 class LastReportTimeSensor(CoordinatorEntity, SensorEntity):
     """Reprezentacja czujnika czasu ostatniego raportu."""
 
@@ -145,11 +150,16 @@ class LastReportTimeSensor(CoordinatorEntity, SensorEntity):
             name="AI Support",
             manufacturer="Custom Integration"
         )
+        self._last_report_time = None
 
     @property
     def native_value(self):
         """Zwraca czas ostatniego raportu jako obiekt datetime."""
+        return self._last_report_time
+
+    async def async_update(self):
         report_dir = Path(self.coordinator.hass.config.path("ai_reports"))
+        self._last_report_time = None
         if report_dir.exists():
             report_files = sorted(
                 report_dir.glob("report_*.json"),
@@ -157,19 +167,23 @@ class LastReportTimeSensor(CoordinatorEntity, SensorEntity):
                 reverse=True
             )
             if report_files:
+                def _load_json(path):
+                    with path.open(encoding="utf-8") as f:
+                        return json.load(f)
                 try:
-                    with report_files[0].open(encoding="utf-8") as f:
-                        data = json.load(f)
+                    data = await self.coordinator.hass.async_add_executor_job(
+                        _load_json, report_files[0]
+                    )
                     timestamp_str = data.get("timestamp")
                     if timestamp_str:
                         dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
                         if dt.tzinfo is None:
                             local_tz = self.coordinator.hass.config.time_zone
                             dt = dt.replace(tzinfo=zoneinfo.ZoneInfo(local_tz))
-                        return dt
+                        self._last_report_time = dt
                 except Exception as e:
-                    self.coordinator.logger.error(f"Błąd odczytu czasu ostatniego raportu: {e}")
-        return None
+                    _LOGGER.error(f"Błąd odczytu czasu ostatniego raportu: {e}")
+                    self._last_report_time = None
 
 class NextReportTimeSensor(CoordinatorEntity, SensorEntity):
     """Reprezentacja czujnika czasu następnego raportu."""
@@ -199,8 +213,8 @@ class NextReportTimeSensor(CoordinatorEntity, SensorEntity):
                     local_tz = self.coordinator.hass.config.time_zone
                     dt = dt.replace(tzinfo=zoneinfo.ZoneInfo(local_tz))
                 return dt
-            except Exception as e:
-                self.coordinator.logger.error(f"Błąd konwersji czasu następnego raportu: {e}")
+            except Exception:
+                pass
         return None
 
 class SelectedReportSensor(SensorEntity):
@@ -211,7 +225,6 @@ class SelectedReportSensor(SensorEntity):
 
     def __init__(self, hass: HomeAssistant):
         self.hass = hass
-        # Wykrywamy język i ustawiamy odpowiedni entity_id
         lang = get_lang(hass)
         if lang == "pl":
             self._attr_unique_id = "ai_support_wybrany_raport"
@@ -221,15 +234,11 @@ class SelectedReportSensor(SensorEntity):
             self._attr_unique_id = "ai_support_selected_report"
             self._attr_name = "Selected AI Report"
             self._no_report_msg = "No report"
-        
         self._state = self._no_report_msg
         self._attr_extra_state_attributes = {}
         self._unsub = None
 
     async def async_added_to_hass(self):
-        """Rejestruj nasłuchiwanie zmian input_select gdy sensor jest dodawany."""
-        
-        # Dodanie nasłuchiwania zmian w input_select
         self._unsub = async_track_state_change(
             self.hass,
             "input_select.ai_support_report_file",
@@ -238,16 +247,12 @@ class SelectedReportSensor(SensorEntity):
         await self.async_update()
 
     async def async_will_remove_from_hass(self):
-        """Wyczyść nasłuchiwanie gdy sensor jest usuwany."""
         if self._unsub:
             self._unsub()
             self._unsub = None
 
     async def _input_select_changed(self, entity_id, old_state, new_state):
-        """Obsługa zmiany wyboru w input_select."""
-        # Aktualizacja stanu sensora po zmianie input_select
         await self.async_update()
-        # Wymuszamy aktualizację UI
         self.async_write_ha_state()
 
     @property
@@ -261,24 +266,22 @@ class SelectedReportSensor(SensorEntity):
     async def async_update(self):
         entity_id = "input_select.ai_support_report_file"
         selected = self.hass.states.get(entity_id)
-
         if not selected or selected.state in ("unknown", "Brak raportów"):
             self._state = self._no_report_msg
             self._attr_extra_state_attributes = {}
             return
-
         file_name = selected.state
         self._state = file_name
         file_path = Path(self.hass.config.path("ai_reports")) / file_name
-
         if not await self.hass.async_add_executor_job(lambda: file_path.exists()):
             self._state = self._no_report_msg
             self._attr_extra_state_attributes = {}
             return
-
         try:
-            async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
-                data = json.loads(await f.read())
+            def _load_json(path):
+                with path.open(encoding="utf-8") as f:
+                    return json.load(f)
+            data = await self.hass.async_add_executor_job(_load_json, file_path)
             self._attr_extra_state_attributes = {
                 "timestamp": data.get("timestamp"),
                 "report": data.get("report", ""),
@@ -291,12 +294,10 @@ class SelectedReportSensor(SensorEntity):
             self._attr_extra_state_attributes = {}
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
-    """Konfiguracja platformy sensor."""
     data = hass.data[DOMAIN][entry.entry_id]
     coordinator = data["coordinator"]
     ai_coordinator = data["ai_coordinator"]
 
-    
     async_add_entities([
         LogAnalysisSensor(coordinator),
         LastReportTimeSensor(coordinator),
@@ -310,7 +311,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 class EntityDiscoverySensor(CoordinatorEntity, SensorEntity):
     _attr_icon = "mdi:magnify-scan"
     _attr_has_entity_name = True
-    
+
     def __init__(self, coordinator):
         super().__init__(coordinator)
         self._attr_name = "Status wykrywania encji"
@@ -320,16 +321,14 @@ class EntityDiscoverySensor(CoordinatorEntity, SensorEntity):
             name="AI Support",
             manufacturer="Custom Integration"
         )
-    
+
     @property
     def native_value(self):
-        """Zwraca główny status wykrywania encji - przetłumaczony na język użytkownika."""
         status_key = self.coordinator.entity_discovery_status.get("status", "idle")
         return translate_status_label(status_key, self.coordinator.hass)
-    
+
     @property
     def extra_state_attributes(self):
-        """Dodatkowe atrybuty czujnika."""
         return {
             "last_run": self.coordinator.entity_discovery_status.get("last_run"),
             "status": self.coordinator.entity_discovery_status.get("status"),
@@ -341,7 +340,7 @@ class EntityDiscoverySensor(CoordinatorEntity, SensorEntity):
 class BaselineBuildingSensor(CoordinatorEntity, SensorEntity):
     _attr_icon = "mdi:chart-bell-curve"
     _attr_has_entity_name = True
-    
+
     def __init__(self, coordinator):
         super().__init__(coordinator)
         self._attr_name = "Status budowania baseline"
@@ -351,16 +350,14 @@ class BaselineBuildingSensor(CoordinatorEntity, SensorEntity):
             name="AI Support",
             manufacturer="Custom Integration"
         )
-    
+
     @property
     def native_value(self):
-        """Zwraca główny status budowania baseline - przetłumaczony na język użytkownika."""
         status_key = self.coordinator.baseline_status.get("status", "idle")
         return translate_status_label(status_key, self.coordinator.hass)
-    
+
     @property
     def extra_state_attributes(self):
-        """Dodatkowe atrybuty czujnika."""
         return {
             "last_run": self.coordinator.baseline_status.get("last_run"),
             "status": self.coordinator.baseline_status.get("status"),

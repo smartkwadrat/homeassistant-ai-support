@@ -1,0 +1,4 @@
+analyze_now:
+  name: Analizuj teraz
+  description: Uruchamia natychmiastową analizę logów przez AI i generuje raport na żądanie.
+  fields: {}
