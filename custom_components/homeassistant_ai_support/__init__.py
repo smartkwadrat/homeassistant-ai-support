@@ -85,6 +85,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Inicjalizacja oryginalnego koordynatora
         coordinator = LogAnalysisCoordinator(hass, entry)
         await coordinator._load_stored_next_run_time()
+        await coordinator.analyzer.async_init_client()
         
         # Inicjalizacja nowego koordynatora AI
         ai_coordinator = AIAnalyticsCoordinator(hass, entry)
@@ -652,6 +653,7 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 encoding="utf-8"
             )
         )
+        await self.async_request_refresh()
         _LOGGER.info("Zapisano raport do pliku: %s", report_path)
 
     async def _cleanup_old_reports(self) -> None:
@@ -665,7 +667,7 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         files = await self.hass.async_add_executor_job(
             lambda: [f for f in report_dir.iterdir() if f.is_file() and f.name.endswith('.json')]
         )
-        if len(files) <= max_reports:
+        if len(files) <= int(max_reports):
             return
         files_with_time = await self.hass.async_add_executor_job(
             lambda: [(f, f.stat().st_ctime) for f in files]

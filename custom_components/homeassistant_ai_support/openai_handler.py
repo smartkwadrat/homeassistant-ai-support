@@ -15,27 +15,22 @@ from homeassistant.core import HomeAssistant
 _LOGGER = logging.getLogger(__name__)
 
 class OpenAIAnalyzer:
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        api_key: str,
-        model: str = "gpt-4.1-mini",
-        system_prompt: str = "",
-        max_tokens: int = 2000
-    ):
+    def __init__(self, hass, api_key, model="gpt-4.1-mini", system_prompt="", max_tokens=2000):
         self.hass = hass
-        async def async_init_client(self):
-            def create_client():
-                return httpx.AsyncClient(timeout=60.0)
-            self.httpx_client = await self.hass.async_add_executor_job(create_client)
-        self.client = AsyncOpenAI(
-            api_key=api_key,
-            max_retries=3,  # Zwiększona liczba prób
-            http_client=self.httpx_client
-        )
+        self.api_key = api_key
         self.model = model
         self.system_prompt = system_prompt
         self.max_tokens = max_tokens
+        self.client = None  # będzie inicjalizowany asynchronicznie
+
+    async def async_init_client(self):
+        def create_client():
+            from openai import AsyncOpenAI
+            return AsyncOpenAI(
+                api_key=self.api_key,
+                max_retries=3
+            )
+        self.client = await self.hass.async_add_executor_job(create_client)
 
     async def analyze_logs(self, logs: str, cost_optimization: bool, max_retries: int = 3) -> str:
         if not logs.strip():

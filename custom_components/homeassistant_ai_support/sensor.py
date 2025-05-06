@@ -155,9 +155,11 @@ class LastReportTimeSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         """Zwraca czas ostatniego raportu jako obiekt datetime."""
+        self._update_last_report_time()
         return self._last_report_time
 
-    async def async_update(self):
+    def _update_last_report_time(self):
+        """Update report time without async."""
         report_dir = Path(self.coordinator.hass.config.path("ai_reports"))
         self._last_report_time = None
         if report_dir.exists():
@@ -167,13 +169,9 @@ class LastReportTimeSensor(CoordinatorEntity, SensorEntity):
                 reverse=True
             )
             if report_files:
-                def _load_json(path):
-                    with path.open(encoding="utf-8") as f:
-                        return json.load(f)
                 try:
-                    data = await self.coordinator.hass.async_add_executor_job(
-                        _load_json, report_files[0]
-                    )
+                    with report_files[0].open(encoding="utf-8") as f:
+                        data = json.load(f)
                     timestamp_str = data.get("timestamp")
                     if timestamp_str:
                         dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))

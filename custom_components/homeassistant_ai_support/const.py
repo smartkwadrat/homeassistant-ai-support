@@ -75,10 +75,10 @@ REPORT_GENERATION_MINUTE = 50
 
 # Baseline refresh options
 BASELINE_REFRESH_OPTIONS = {
-    "3_days": "3",
-    "7_days": "7",
-    "14_days": "14",
-    "30_days": "30",
+    "3_days": "Co 3 dni",
+    "7_days": "Co 7 dni",
+    "14_days": "Co 14 dni",
+    "30_days": "Co 30 dni",
 }
 
 # Logging constants
