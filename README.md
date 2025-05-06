@@ -80,6 +80,6 @@ content: |-
 logger:
   default: info
   logs:
-    custom_components.homeassistant_ai_support: debug
-    openai: debug
+    custom_components.homeassistant_ai_support: error
+    openai: error
 ```

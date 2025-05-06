@@ -154,34 +154,19 @@ class LastReportTimeSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self):
-        """Zwraca czas ostatniego raportu jako obiekt datetime."""
-        self._update_last_report_time()
-        return self._last_report_time
-
-    def _update_last_report_time(self):
-        """Update report time without async."""
-        report_dir = Path(self.coordinator.hass.config.path("ai_reports"))
-        self._last_report_time = None
-        if report_dir.exists():
-            report_files = sorted(
-                report_dir.glob("*.json"),
-                key=lambda f: f.stat().st_ctime,
-                reverse=True
-            )
-            if report_files:
-                try:
-                    with report_files[0].open(encoding="utf-8") as f:
-                        data = json.load(f)
-                    timestamp_str = data.get("timestamp")
-                    if timestamp_str:
-                        dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-                        if dt.tzinfo is None:
-                            local_tz = self.coordinator.hass.config.time_zone
-                            dt = dt.replace(tzinfo=zoneinfo.ZoneInfo(local_tz))
-                        self._last_report_time = dt
-                except Exception as e:
-                    _LOGGER.error(f"Błąd odczytu czasu ostatniego raportu: {e}")
-                    self._last_report_time = None
+        """Zwraca czas ostatniego raportu wg koordynatora."""
+        last_run_str = self.coordinator.data.get("last_run")
+        if last_run_str:
+            try:
+                dt = datetime.fromisoformat(last_run_str)
+                # ustawiamy strefę, jeśli teraz jest naive
+                if dt.tzinfo is None:
+                    tz = zoneinfo.ZoneInfo(self.coordinator.hass.config.time_zone)
+                    dt = dt.replace(tzinfo=tz)
+                return dt
+            except Exception:
+                return None
+        return None
 
 class NextReportTimeSensor(CoordinatorEntity, SensorEntity):
     """Reprezentacja czujnika czasu następnego raportu."""

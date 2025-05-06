@@ -176,11 +176,11 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow for AI Support integration."""
 
     def __init__(self, config_entry: ConfigEntry) -> None:
-        self.config_entry = config_entry
+        self._config_entry = config_entry
 
     def _build_options_schema(self) -> vol.Schema:
-        opts: Mapping[str, Any] = self.config_entry.options or {}
-        data: Mapping[str, Any] = self.config_entry.data or {}
+        opts: Mapping[str, Any] = self._config_entry.options or {}
+        data: Mapping[str, Any] = self._config_entry.data or {}
 
         return vol.Schema({
             vol.Required(
