@@ -12,22 +12,22 @@ from .const import DOMAIN
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant,
     entry: ConfigEntry
-) -> dict[str, Any]:
+) -> dict:
     """Return diagnostics for config entry."""
     
-    # Use a proper function for executor job
-    def get_report_count():
-        from pathlib import Path
-        report_path = Path(hass.config.path("ai_reports"))
-        if not report_path.exists():
-            return 0
-        return len(list(report_path.glob("*.json")))
-    
-    report_count = await hass.async_add_executor_job(get_report_count)
-    
-    return {
+    basic_data = {
         "version": entry.version,
         "options": dict(entry.options),
         "data": redact_data(dict(entry.data), to_redact={"api_key"}),
-        "reports_count": report_count
     }
+    
+    try:
+        from pathlib import Path
+        report_path = Path(hass.config.path("ai_reports"))
+        if report_path.exists():
+            count = len(list(report_path.glob("*.json")))
+            basic_data["reports_count"] = count
+    except Exception:
+        pass
+        
+    return basic_data

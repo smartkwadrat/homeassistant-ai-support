@@ -14,8 +14,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.event import async_track_state_change
-from homeassistant.const import EntityCategory
+from homeassistant.core import Event, EventStateChangedData, callback
+from homeassistant.helpers.event import async_track_state_change_event
 
 from .const import DOMAIN
 
@@ -237,10 +237,11 @@ class SelectedReportSensor(SensorEntity):
         self._unsub = None
 
     async def async_added_to_hass(self):
-        self._unsub = async_track_state_change(
+        # Użycie async_track_state_change_event zamiast przestarzałego async_track_state_change
+        self._unsub = async_track_state_change_event(
             self.hass,
             "input_select.ai_support_report_file",
-            self._input_select_changed
+            self._input_select_changed_event
         )
         await self.async_update()
 
@@ -249,9 +250,10 @@ class SelectedReportSensor(SensorEntity):
             self._unsub()
             self._unsub = None
 
-    async def _input_select_changed(self, entity_id, old_state, new_state):
-        await self.async_update()
-        self.async_write_ha_state()
+    @callback
+    def _input_select_changed_event(self, event: Event[EventStateChangedData]) -> None:
+        """Obsługa zdarzeń zmiany stanu input_select."""
+        self.hass.async_create_task(self.async_update())
 
     @property
     def state(self):
@@ -267,6 +269,7 @@ class SelectedReportSensor(SensorEntity):
         if not selected or selected.state in ("unknown", "Brak raportów"):
             self._state = self._no_report_msg
             self._attr_extra_state_attributes = {}
+            self.async_write_ha_state()
             return
         file_name = selected.state
         self._state = file_name
@@ -274,6 +277,7 @@ class SelectedReportSensor(SensorEntity):
         if not await self.hass.async_add_executor_job(lambda: file_path.exists()):
             self._state = self._no_report_msg
             self._attr_extra_state_attributes = {}
+            self.async_write_ha_state()
             return
         try:
             def _load_json(path):
@@ -290,6 +294,8 @@ class SelectedReportSensor(SensorEntity):
             error_msg = f"Błąd: {e}" if lang == "pl" else f"Error: {e}"
             self._state = error_msg
             self._attr_extra_state_attributes = {}
+        
+        self.async_write_ha_state()
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
     data = hass.data[DOMAIN][entry.entry_id]
