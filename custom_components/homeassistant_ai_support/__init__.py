@@ -432,9 +432,9 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.data["progress"] = 30
             self.async_update_listeners()
 
-            if len(raw_logs) > 500000:
-                _LOGGER.info("Ograniczono rozmiar logów z %d do 500000 znaków", len(raw_logs))
-                raw_logs = raw_logs[-500000:]
+            if len(raw_logs) > 10000:
+                _LOGGER.info("Ograniczono rozmiar logów z %d do 10000 znaków", len(raw_logs))
+                raw_logs = raw_logs[-10000:]
 
             filtered_logs = self._filter_logs(
                 raw_logs,
@@ -627,55 +627,106 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if any(f" {level} " in line for level in mapped_levels):
                 filtered_lines.append(line)
                 count += 1
-            if count >= 2000:
-                _LOGGER.info("Osiągnięto limit 2000 linii logów, obcinam pozostałe")
+            if count >= 6000:
+                _LOGGER.info("Osiągnięto limit 6000 linii logów, obcinam pozostałe")
                 break
         filtered_logs = '\n'.join(filtered_lines)
         _LOGGER.debug("Liczba linii po filtracji: %d", len(filtered_lines))
         return filtered_logs
 
     async def _save_to_file(self, analysis: str, logs: str) -> None:
+        # Najpierw wyczyść stare raporty przed dodaniem nowego
+        await self._cleanup_old_reports(preserve_space=True)
+    
         report_dir = Path(self.hass.config.path("ai_reports"))
         await self.hass.async_add_executor_job(
             lambda: report_dir.mkdir(exist_ok=True)
         )
+    
+        # Nowy format nazwy pliku: 2025-05-06.json
         timestamp = datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone))
-        filename = f"report_{timestamp.strftime('%Y%m%d_%H%M%S')}.json"
+        base_filename = f"{timestamp.strftime('%Y-%m-%d')}.json"
+    
+        # Sprawdź czy plik już istnieje i dodaj przyrostek jeśli tak
+        def get_unique_filename():
+            if not (report_dir / base_filename).exists():
+                return base_filename
+            
+            # Szukaj plików z tym samym prefiksem daty
+            date_prefix = timestamp.strftime('%Y-%m-%d')
+            matching_files = list(report_dir.glob(f"{date_prefix}*.json"))
+        
+            # Znajdź najwyższy numer przyrostka
+            highest_suffix = 1
+            for file in matching_files:
+                name = file.stem  # nazwa bez rozszerzenia
+                if "_" in name:
+                    try:
+                        suffix = int(name.split("_")[-1])
+                        highest_suffix = max(highest_suffix, suffix)
+                    except ValueError:
+                        pass
+        
+            # Utwórz nową nazwę z przyrostkiem
+            return f"{date_prefix}_{highest_suffix + 1}.json"
+    
+        filename = await self.hass.async_add_executor_job(get_unique_filename)
         report_path = report_dir / filename
+    
         data = {
             "timestamp": timestamp.strftime("%Y-%m-%d %H:%M"),
             "report": analysis,
-            "log_snippet": logs[-5000:] if len(logs) > 5000 else logs,
+            "log_snippet": logs[-10000:] if len(logs) > 10000 else logs,
         }
+    
         await self.hass.async_add_executor_job(
             lambda: report_path.write_text(
                 json.dumps(data, indent=2, ensure_ascii=False),
                 encoding="utf-8"
             )
         )
-        await self.async_request_refresh()
+    
         _LOGGER.info("Zapisano raport do pliku: %s", report_path)
+    
+        # Aktualizuj input_select po zapisaniu pliku
+        await update_input_select_options(self.hass)
+        await self.async_request_refresh()
 
-    async def _cleanup_old_reports(self) -> None:
-        max_reports = self.entry.options.get(CONF_MAX_REPORTS, "10")
+
+    async def _cleanup_old_reports(self, preserve_space=False) -> None:
+        max_reports = int(self.entry.options.get(CONF_MAX_REPORTS, "10"))
+    
+        # Jeśli mamy zrobić miejsce na nowy raport, zmniejszamy limit o 1
+        if preserve_space:
+            max_reports -= 1
+    
         report_dir = Path(self.hass.config.path("ai_reports"))
         exists = await self.hass.async_add_executor_job(
             lambda: report_dir.exists()
         )
         if not exists:
             return
+        
         files = await self.hass.async_add_executor_job(
             lambda: [f for f in report_dir.iterdir() if f.is_file() and f.name.endswith('.json')]
         )
-        if len(files) <= int(max_reports):
+    
+        if len(files) <= max_reports:
             return
+        
         files_with_time = await self.hass.async_add_executor_job(
             lambda: [(f, f.stat().st_ctime) for f in files]
         )
+    
+        # Sortujemy od najstarszego do najnowszego
         files_with_time.sort(key=lambda x: x[1])
-        for old_file, _ in files_with_time[:-max_reports]:
-            await self.hass.async_add_executor_job(
-                lambda f=old_file: f.unlink()
-            )
-            _LOGGER.debug("Usunięto stary raport: %s", old_file)
-
+    
+        # Usuwamy najstarsze pliki, aby osiągnąć docelową liczbę
+        for old_file, _ in files_with_time[:len(files) - max_reports]:
+            try:
+                await self.hass.async_add_executor_job(
+                    lambda f=old_file: f.unlink()
+                )
+                _LOGGER.debug("Usunięto stary raport: %s", old_file)
+            except Exception as e:
+                _LOGGER.error(f"Błąd podczas usuwania raportu {old_file}: {e}")
