@@ -2,7 +2,7 @@
 
 This is custom integration to home assistant which use ChatGPT for analyzing logs and system behaviour
  
-Version 0.8.9
+Version 0.9.0
 
 
 Dashboard card for displaying the newest report (English) :
