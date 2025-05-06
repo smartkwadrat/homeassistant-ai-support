@@ -118,7 +118,7 @@ class LogAnalysisSensor(CoordinatorEntity, SensorEntity):
         self._latest_report = {}
         if report_dir.exists():
             report_files = sorted(
-                report_dir.glob("report_*.json"),
+                report_dir.glob("*.json"),
                 key=lambda f: f.stat().st_ctime,
                 reverse=True
             )
@@ -164,7 +164,7 @@ class LastReportTimeSensor(CoordinatorEntity, SensorEntity):
         self._last_report_time = None
         if report_dir.exists():
             report_files = sorted(
-                report_dir.glob("report_*.json"),
+                report_dir.glob("*.json"),
                 key=lambda f: f.stat().st_ctime,
                 reverse=True
             )

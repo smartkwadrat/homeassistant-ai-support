@@ -43,7 +43,7 @@ async def update_input_select_options(hass: HomeAssistant):
     reports_dir = Path(hass.config.path("ai_reports"))
     if reports_dir.exists():
         files = sorted(
-            [f.name for f in reports_dir.glob("report_*.json")],
+            [f.name for f in reports_dir.glob("*.json")],
             reverse=True
         )
         options = files if files else ["Brak raportów"]
@@ -516,7 +516,7 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if report_dir.exists():
             report_files = sorted(
-                report_dir.glob("report_*.json"),
+                report_dir.glob("*.json"),
                 key=lambda f: f.stat().st_ctime,
                 reverse=True
             )
