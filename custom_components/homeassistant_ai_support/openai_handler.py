@@ -5,12 +5,7 @@ from __future__ import annotations
 import logging
 import asyncio
 import json
-from typing import Any
-
-import httpx
-from openai import AsyncOpenAI, APIError, AuthenticationError, BadRequestError, RateLimitError
-
-from homeassistant.core import HomeAssistant
+from openai import APIError, AuthenticationError, BadRequestError, RateLimitError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -161,6 +156,7 @@ class OpenAIAnalyzer:
 
     async def close(self):
         try:
-            await self.httpx_client.aclose()
+            if self.client:
+                await self.client.close()
         except Exception as err:
-            _LOGGER.warning("Błąd przy zamykaniu klienta HTTP: %s", err)
+            _LOGGER.warning("Błąd przy zamykaniu klienta OpenAI: %s", err)

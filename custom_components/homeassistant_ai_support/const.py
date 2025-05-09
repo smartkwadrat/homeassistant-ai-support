@@ -1,6 +1,4 @@
 """Constants for the Home Assistant AI Support integration."""
-from homeassistant.helpers.storage import Store
-from homeassistant.const import UnitOfTime
 
 DOMAIN = "homeassistant_ai_support"
 
@@ -23,7 +21,6 @@ CONF_BASELINE_REFRESH_INTERVAL = "baseline_refresh_interval"
 CONF_LEARNING_MODE = "learning_mode"
 
 # Wartości domyślne
-DEFAULT_SCAN_INTERVAL = 24
 DEFAULT_COST_OPTIMIZATION = False
 DEFAULT_MAX_REPORTS = "10"
 DEFAULT_DIAGNOSTIC_INTEGRATION = True
@@ -67,7 +64,7 @@ SCAN_INTERVAL_OPTIONS = {
     SCAN_INTERVAL_30_DAYS: 30,
 }
 
-DEFAULT_SCAN_INTERVAL = SCAN_INTERVAL_7_DAYS  # Domyślnie co 7 dni
+DEFAULT_SCAN_INTERVAL = SCAN_INTERVAL_7_DAYS
 
 # Godzina generowania raportu (23:50)
 REPORT_GENERATION_HOUR = 23
@@ -105,3 +102,21 @@ DEFAULT_PRIORITY_CHECK_INTERVAL = "15"
 ATTR_LAST_ANOMALY = "last_anomaly"
 ATTR_FALSE_ALARMS = "false_alarms"
 ATTR_SENSITIVITY = "current_sensitivity"
+
+# Sensitivity settings
+CONF_DEFAULT_SIGMA = "default_sigma"
+CONF_ENTITY_SENSITIVITY = "entity_sensitivity"
+CONF_BASELINE_WINDOW_DAYS = "baseline_window_days"
+
+DEFAULT_SIGMA = 3.0  # Uniwersalna domyślna wartość sigma
+DEFAULT_BASELINE_WINDOW_DAYS = 7  # dni
+
+# Binary anomaly thresholds
+CONF_BINARY_FLIP_THRESHOLD_LOW = "binary_flip_threshold_low"
+CONF_BINARY_FLIP_THRESHOLD_MEDIUM = "binary_flip_threshold_medium" 
+CONF_BINARY_FLIP_THRESHOLD_HIGH = "binary_flip_threshold_high"
+
+DEFAULT_BINARY_FLIP_THRESHOLD_LOW = 0.1  # 10% zmian to anomalia o niskiej ważności
+DEFAULT_BINARY_FLIP_THRESHOLD_MEDIUM = 0.05  # 5% zmian to anomalia o średniej ważności
+DEFAULT_BINARY_FLIP_THRESHOLD_HIGH = 0.01  # 1% zmian to anomalia o wysokiej ważności
+

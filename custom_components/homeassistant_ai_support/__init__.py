@@ -3,27 +3,23 @@
 from __future__ import annotations
 
 import logging
-import json
-from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
-import asyncio
-import zoneinfo
+from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.helpers.typing import ConfigType
-from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.helpers.event import async_track_time_interval
-from homeassistant.helpers.storage import Store
 
-from .const import *
-
-from .openai_handler import OpenAIAnalyzer
-from .sensor import EntityDiscoverySensor, AnomalyDetectionSensor
-from .button import DiscoverEntitiesButton, BuildBaselineButton
+from .const import (
+    DOMAIN,
+    CONF_STANDARD_CHECK_INTERVAL,
+    CONF_PRIORITY_CHECK_INTERVAL,
+    DEFAULT_STANDARD_CHECK_INTERVAL,
+    DEFAULT_PRIORITY_CHECK_INTERVAL,
+)
+from .coordinator import AIAnalyticsCoordinator, LogAnalysisCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,87 +30,122 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.data.setdefault(DOMAIN, {})
     return True
 
-async def update_input_select_options(hass: HomeAssistant):
+async def update_input_select_options(hass: HomeAssistant) -> None:
     """Update input_select options with current report files, if helper exists."""
     entity_id = INPUT_SELECT_ENTITY
     if entity_id not in hass.states.async_entity_ids("input_select"):
-        # Helper nie istnieje – nie rób nic, integracja działa jak dawniej
         return
     reports_dir = Path(hass.config.path("ai_reports"))
     if reports_dir.exists():
-        files = sorted(
-            [f.name for f in reports_dir.glob("*.json")],
-            reverse=True
-        )
+        files = sorted([f.name for f in reports_dir.glob("*.json")], reverse=True)
         options = files if files else ["Brak raportów"]
         await hass.services.async_call(
-            "input_select",
-            "set_options",
-            {
-                "entity_id": entity_id,
-                "options": options
-            },
-            blocking=True,
+            "input_select", "set_options",
+            {"entity_id": entity_id, "options": options}, blocking=False,
         )
-        # Jeśli wybrana opcja nie istnieje, ustaw najnowszą
         state = hass.states.get(entity_id)
         if state and state.state not in options and options and options[0] != "Brak raportów":
             await hass.services.async_call(
-                "input_select",
-                "select_option",
-                {
-                    "entity_id": entity_id,
-                    "option": options[0]
-                },
-                blocking=True,
+                "input_select", "select_option",
+                {"entity_id": entity_id, "option": options[0]}, blocking=False,
             )
 
-async def options_update_listener(hass, config_entry):
+async def options_update_listener(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
     await hass.config_entries.async_reload(config_entry.entry_id)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Home Assistant AI Support from a config entry."""
     try:
-        # Jeśli helper istnieje, zaktualizuj opcje dropdowna
+        # Update dropdown helper if present
         await update_input_select_options(hass)
 
-        # Inicjalizacja danych domeny
-        if DOMAIN not in hass.data:
-            hass.data[DOMAIN] = {}
-        
-        # Inicjalizacja oryginalnego koordynatora
+        # Initialize domain data
+        hass.data.setdefault(DOMAIN, {})
+
+        # Original coordinator
         coordinator = LogAnalysisCoordinator(hass, entry)
         await coordinator._load_stored_next_run_time()
         await coordinator.analyzer.async_init_client()
-        
-        # Inicjalizacja nowego koordynatora AI
+
+        # AI coordinator
         ai_coordinator = AIAnalyticsCoordinator(hass, entry)
         await ai_coordinator.async_config_entry_first_refresh()
-        
-        # Przechowywanie obu koordynatorów i inicjalizacja listy encji
+
+        # Store coordinators and entity list
         hass.data[DOMAIN][entry.entry_id] = {
             "coordinator": coordinator,
             "ai_coordinator": ai_coordinator,
+            "entities": []
         }
-        hass.data[DOMAIN][entry.entry_id]["entities"] = []
+        # Rejestracja listenera zmian opcji z możliwością późniejszego usunięcia
+        remove_options_listener = entry.add_update_listener(options_update_listener)
+        coordinator._remove_update_listener = remove_options_listener
+        entry.async_on_unload(remove_options_listener)
 
-        entry.async_on_unload(entry.add_update_listener(options_update_listener))
-
-        # Rejestracja platform
+        # Forward to platforms
         await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "button"])
 
-        # Rejestracja usługi analizy na żądanie
+        # Register on-demand analysis service
         async def handle_analyze_now(call):
-            """Obsługa usługi analizy na żądanie."""
             await coordinator.async_request_refresh()
-
         hass.services.async_register(DOMAIN, "analyze_now", handle_analyze_now)
 
-        # Skonfiguruj okresowe zadania dla wykrywania anomalii
+        # Register false-alarm reporting service
+        async def handle_report_false_alarm(call):
+            entity_id = call.data.get("entity_id")
+            reason = call.data.get("reason", "Oznaczony jako fałszywy alarm przez użytkownika")
+            if entity_id:
+                await ai_coordinator.anomaly_detector.log_false_alarm(entity_id, reason)
+                ai_coordinator.async_update_listeners()
+        hass.services.async_register(DOMAIN, "report_false_alarm", handle_report_false_alarm)
+
+        # Register monitoring toggle service
+        async def handle_toggle_monitoring(call):
+            enable = call.data.get("enable")
+            if enable is not None:
+                ai_coordinator.monitoring_active = enable
+                state = "włączony" if enable else "wyłączony"
+                _LOGGER.info("Monitoring anomalii został %s", state)
+                ai_coordinator.async_update_listeners()
+        hass.services.async_register(DOMAIN, "toggle_monitoring", handle_toggle_monitoring)
+
+        # Schedule standard checks
+        standard_interval = timedelta(
+            minutes=int(entry.options.get(
+                CONF_STANDARD_CHECK_INTERVAL,
+                DEFAULT_STANDARD_CHECK_INTERVAL
+            ))
+        )
         async_track_time_interval(
-            hass, 
-            ai_coordinator.async_check_anomalies, 
-            timedelta(minutes=entry.options.get(CONF_ANOMALY_CHECK_INTERVAL, 30))  # Domyślnie 30 minut jeśli nie skonfigurowano
+            hass,
+            lambda now: hass.async_create_task(
+                ai_coordinator.async_check_anomalies("standard")
+            ),
+            standard_interval
+        )
+
+        # Schedule priority checks
+        priority_interval = timedelta(
+            minutes=int(entry.options.get(
+                CONF_PRIORITY_CHECK_INTERVAL,
+                DEFAULT_PRIORITY_CHECK_INTERVAL
+            ))
+        )
+        async_track_time_interval(
+            hass,
+            lambda now: hass.async_create_task(
+                ai_coordinator.async_check_anomalies("priority")
+            ),
+            priority_interval
+        )
+
+        # Clean up entities daily
+        async def clean_entities_periodically(now=None):
+            await ai_coordinator.entity_manager.clean_nonexistent_entities()
+        async_track_time_interval(
+            hass,
+            clean_entities_periodically,
+            timedelta(days=1)
         )
 
         return True
@@ -123,610 +154,34 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("Setup error: %s", err, exc_info=True)
         raise ConfigEntryNotReady from err
 
-
-class AIAnalyticsCoordinator(DataUpdateCoordinator):
-    """Koordinator analizy AI dla Home Assistant."""
-    
-    def __init__(self, hass, entry):
-        super().__init__(
-            hass,
-            _LOGGER,
-            name="AI Analytics",
-            update_interval=timedelta(minutes=entry.options.get(CONF_ANOMALY_CHECK_INTERVAL, 30)),
-        )
-        self.hass = hass
-        self.entry = entry
-        self.entity_discovery_status = {
-            "status": "idle",
-            "status_description": "Gotowy do wykrywania encji",
-            "progress": 0,
-            "last_run": None,
-            "error": None
-        }
-        self.baseline_status = {
-            "status": "idle",
-            "status_description": "Gotowy do budowania baseline",
-            "progress": 0,
-            "last_run": None,
-            "error": None
-        }
-        self.anomaly_detector = AnomalyDetector(hass)
-    
-    async def async_config_entry_first_refresh(self):
-        """Initial refresh of data."""
-        # Inicjalizacja danych przy pierwszym uruchomieniu
-        pass
-    
-    async def async_check_anomalies(self, *args):
-        """Check for anomalies in the system."""
-        await self.anomaly_detector.detect()
-    
-    async def start_entity_discovery(self):
-        """Start the entity discovery process."""
-        # Aktualizacja statusu
-        self.entity_discovery_status.update({
-            "status": "initialization",
-            "status_description": "Inicjalizacja procesu wykrywania encji",
-            "progress": 5,
-            "last_run": datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone)).isoformat()
-        })
-        self.async_update_listeners()
-    
-        try:
-            # Pobranie danych encji
-            self.entity_discovery_status.update({
-                "status": "collecting",
-                "status_description": "Zbieranie danych o encjach",
-                "progress": 30
-            })
-            self.async_update_listeners()
-            await asyncio.sleep(2)  # Symulacja pracy
-        
-            # Analiza AI
-            self.entity_discovery_status.update({
-                "status": "analyzing",
-                "status_description": "Analiza encji przez AI",
-                "progress": 60
-            })
-            self.async_update_listeners()
-            await asyncio.sleep(3)  # Symulacja pracy
-        
-            # Zapisywanie wyników
-            self.entity_discovery_status.update({
-                "status": "saving",
-                "status_description": "Zapisywanie wykrytych encji",
-                "progress": 90
-            })
-            self.async_update_listeners()
-            await asyncio.sleep(1)  # Symulacja pracy
-        
-            # Zakończenie
-            self.entity_discovery_status.update({
-                "status": "success",
-                "status_description": "Wykrywanie encji zakończone powodzeniem",
-                "progress": 100
-            })
-            self.async_update_listeners()
-        except Exception as e:
-            self.entity_discovery_status.update({
-                "status": "error",
-                "status_description": f"Błąd podczas wykrywania encji: {str(e)}",
-                "progress": 0,
-                "error": str(e)
-            })
-            self.async_update_listeners()
-
-    async def start_baseline_building(self):
-        """Start building the baseline for anomaly detection."""
-        # Aktualizacja statusu
-        self.baseline_status.update({
-            "status": "initialization",
-            "status_description": "Inicjalizacja budowania baseline",
-            "progress": 5,
-            "last_run": datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone)).isoformat()
-        })
-        self.async_update_listeners()
-    
-        try:
-            # Zbieranie historycznych danych
-            self.baseline_status.update({
-                "status": "collecting_history",
-                "status_description": "Zbieranie danych historycznych",
-                "progress": 20
-            })
-            self.async_update_listeners()
-            await asyncio.sleep(2)  # Symulacja pracy
-        
-            # Analiza statystyczna
-            self.baseline_status.update({
-                "status": "analyzing_patterns",
-                "status_description": "Analiza wzorców w danych",
-                "progress": 50
-            })
-            self.async_update_listeners()
-            await asyncio.sleep(3)  # Symulacja pracy
-        
-            # Budowanie modelu
-            self.baseline_status.update({
-                "status": "building_model",
-                "status_description": "Budowanie modelu baseline",
-                "progress": 80
-            })
-            self.async_update_listeners()
-            await asyncio.sleep(2)  # Symulacja pracy
-        
-            # Zakończenie
-            self.baseline_status.update({
-                "status": "success",
-                "status_description": "Baseline zbudowany pomyślnie",
-                "progress": 100
-            })
-            self.async_update_listeners()
-        except Exception as e:
-            self.baseline_status.update({
-                "status": "error",
-                "status_description": f"Błąd podczas budowania baseline: {str(e)}",
-                "progress": 0,
-                "error": str(e)
-            })
-            self.async_update_listeners()
-
-class AnomalyDetector:
-    """Detector for anomalies in entity data."""
-    
-    def __init__(self, hass):
-        """Initialize the anomaly detector."""
-        self.hass = hass
-        self.false_alarm_count = 0
-        self.current_sensitivity = 3.0  # Default 3 sigma
-        self.last_anomaly_time = None
-        self.detected_anomalies = []
-        
-    async def detect(self):
-        """Detect anomalies in entity data."""
-        _LOGGER.debug("Checking for anomalies...")
-        # Implementacja wykrywania anomalii
-        pass
-        
-    async def log_false_alarm(self, entity_id, reason):
-        """Log a false alarm."""
-        log_entry = {
-            "timestamp": datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone)).isoformat(),
-            "entity_id": entity_id,
-            "reason": reason,
-            "sensitivity": self.current_sensitivity
-        }
-        
-        await self._append_to_log(FALSE_ALARM_LOG_FILE, log_entry)
-        self.false_alarm_count += 1
-        self._adjust_sensitivity()
-        
-    async def log_rejected_anomaly(self, entity_id, reason):
-        """Log a rejected anomaly."""
-        log_entry = {
-            "timestamp": datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone)).isoformat(),
-            "entity_id": entity_id,
-            "reason": reason,
-            "sensitivity": self.current_sensitivity
-        }
-        
-        await self._append_to_log(REJECTED_ANOMALIES_FILE, log_entry)
-        
-    async def _append_to_log(self, filename, entry):
-        """Append an entry to a log file as proper JSON array."""
-        log_path = Path(self.hass.config.path(ANOMALY_LOG_DIR)) / filename
-    
-        # Ensure directory exists
-        await self.hass.async_add_executor_job(
-            lambda: log_path.parent.mkdir(exist_ok=True)
-        )
-    
-        try:
-            # Initialize data as a list
-            data = []
-        
-            # If file exists and has content, read existing data
-            if await self.hass.async_add_executor_job(lambda: log_path.exists() and log_path.stat().st_size > 0):
-                try:
-                    data = await self.hass.async_add_executor_job(
-                        lambda: json.loads(log_path.read_text())
-                    )
-                except json.JSONDecodeError:
-                    _LOGGER.warning(f"Invalid JSON format in {filename}, creating new file")
-        
-            # Add new entry
-            data.append(entry)
-        
-            # Write updated data back to file
-            await self.hass.async_add_executor_job(
-                lambda: log_path.write_text(json.dumps(data, indent=2))
-            )
-        except Exception as e:
-            _LOGGER.error(f"Error writing to log file: {e}")
-            
-    def _adjust_sensitivity(self):
-        """Dynamically adjust sensitivity based on false alarm rate."""
-        # Dynamic sensitivity adjustment logic
-        if self.false_alarm_count > 10:
-            self.current_sensitivity = min(self.current_sensitivity * 1.1, 5.0)
-        elif self.false_alarm_count < 5:
-            self.current_sensitivity = max(self.current_sensitivity * 0.9, 2.0)
-            
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor", "button"])
-    if unload_ok:
-        data = hass.data[DOMAIN].pop(entry.entry_id, None)
-        if data:
-            coordinator = data.get("coordinator")
-            ai_coordinator = data.get("ai_coordinator")
-            # Zatrzymaj zaplanowane zadanie dla coordinatora
-            if coordinator and hasattr(coordinator, "_remove_update_listener") and coordinator._remove_update_listener:
-                coordinator._remove_update_listener()
-            if coordinator and hasattr(coordinator, "analyzer"):
-                await coordinator.analyzer.close()
-            if ai_coordinator and hasattr(ai_coordinator, "close"):
-                await ai_coordinator.close()
-    return unload_ok
+    # 1) Odładuj platformy
+    success = await hass.config_entries.async_unload_platforms(entry, ["sensor", "button"])
+    if not success:
+        return False
 
-class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Class to manage fetching log analysis data."""
-
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
-        self.entry = entry
-        self.analyzer = OpenAIAnalyzer(
-            hass=hass,
-            api_key=entry.data[CONF_API_KEY],
-            model=MODEL_MAPPING[entry.data.get(CONF_MODEL, "GPT-4.1 mini")],
-            system_prompt=entry.data.get(CONF_SYSTEM_PROMPT, "")
-        )
-        self.hass = hass
-        self._remove_update_listener = None
-        self._first_startup = True
-        self.logger = _LOGGER
-
-        self._store = Store(hass, 1, f"{DOMAIN}_{entry.entry_id}")
-
-        super().__init__(
-            hass,
-            _LOGGER,
-            name=DOMAIN,
-            update_interval=None,
-        )
-
-        self.data = {
-            "status": "waiting",
-            "status_description": "Oczekiwanie na zaplanowaną analizę",
-            "progress": 0,
-            "last_run": None,
-            "next_scheduled_run": None,
-        }
-
-    async def _async_update_data(self) -> dict[str, Any]:
-        if self._first_startup:
-            self._first_startup = False
-            next_run = self._calculate_next_run_time()
-            next_run_with_tz = next_run.replace(tzinfo=zoneinfo.ZoneInfo(self.hass.config.time_zone))
-            self.data["next_scheduled_run"] = next_run_with_tz.isoformat()
-            self._schedule_next_update(next_run)
-            return self.data
-
-        self.data = {
-            **self.data,
-            "status": "generating",
-            "status_description": "Rozpoczynam analizę logów",
-            "progress": 0,
-            "last_update": datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone)).isoformat(),
-        }
-        self.async_update_listeners()
-
-        try:
-            self.data["status"] = "reading_logs"
-            self.data["status_description"] = "Odczytuję pliki logów"
-            self.data["progress"] = 10
-            self.async_update_listeners()
-            raw_logs = await self._get_system_logs()
-
-            self.data["status"] = "filtering_logs"
-            self.data["status_description"] = "Filtruję logi według wybranych poziomów"
-            self.data["progress"] = 30
-            self.async_update_listeners()
-
-            if len(raw_logs) > 10000:
-                _LOGGER.info("Ograniczono rozmiar logów z %d do 10000 znaków", len(raw_logs))
-                raw_logs = raw_logs[-10000:]
-
-            filtered_logs = self._filter_logs(
-                raw_logs,
-                self.entry.options.get(CONF_LOG_LEVELS, ["ERROR", "WARNING"])
-            )
-
-            if not filtered_logs:
-                _LOGGER.info("Brak pasujących logów do analizy")
-                return {
-                    **self.data,
-                    "status": "no_logs",
-                    "status_description": "Brak pasujących logów do analizy",
-                    "progress": 100,
-                    "last_run": datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone)).isoformat(),
-                    "next_scheduled_run": self.data.get("next_scheduled_run"),
-                }
-
-            self.data["status"] = "analyzing"
-            self.data["status_description"] = "Analizuję logi przez AI (może potrwać kilka minut)"
-            self.data["progress"] = 50
-            self.async_update_listeners()
-            analysis = await self.analyzer.analyze_logs(
-                filtered_logs,
-                self.entry.options.get(CONF_COST_OPTIMIZATION, False)
-            )
-
-            self.data["status"] = "saving"
-            self.data["status_description"] = "Zapisuję raport"
-            self.data["progress"] = 80
-            self.async_update_listeners()
-            await self._save_to_file(analysis, filtered_logs)
-            await self._cleanup_old_reports()
-
-            # Jeśli helper istnieje, zaktualizuj opcje dropdowna
-            await update_input_select_options(self.hass)
-
-            next_run = self._calculate_next_run_time()
-            next_run_with_tz = next_run.replace(tzinfo=zoneinfo.ZoneInfo(self.hass.config.time_zone))
-            return {
-                **self.data,
-                "status": "success",
-                "status_description": "Raport został wygenerowany pomyślnie",
-                "progress": 100,
-                "last_run": datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone)).isoformat(),
-                "next_scheduled_run": next_run_with_tz.isoformat(),
-            }
-
-        except asyncio.CancelledError:
-            _LOGGER.warning("Anulowano operację aktualizacji danych")
-            return {
-                **self.data,
-                "status": "cancelled",
-                "status_description": "Anulowano generowanie raportu",
-                "progress": 0,
-                "last_run": datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone)).isoformat(),
-                "next_scheduled_run": self.data.get("next_scheduled_run"),
-            }
-        except Exception as err:
-            _LOGGER.exception("Update error: %s", err)
-            return {
-                **self.data,
-                "status": "error",
-                "status_description": f"Błąd podczas generowania raportu: {str(err)}",
-                "progress": 0,
-                "error": str(err),
-                "next_scheduled_run": self.data.get("next_scheduled_run"),
-            }
-
-    def _calculate_next_run_time(self) -> datetime:
-        # Pobierz aktualny czas w strefie czasowej HA
-        now = datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone))
-        # Pobierz wybraną opcję interwału lub domyślną
-        interval_option = self.entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-        # Zabezpieczenie na wypadek nieprawidłowej wartości
-        interval_days = SCAN_INTERVAL_OPTIONS.get(interval_option, SCAN_INTERVAL_OPTIONS[DEFAULT_SCAN_INTERVAL])
-
-        report_dir = Path(self.hass.config.path("ai_reports"))
-        last_report_time = None
-
-        if report_dir.exists():
-            report_files = sorted(
-                report_dir.glob("*.json"),
-                key=lambda f: f.stat().st_ctime,
-                reverse=True
-            )
-            if report_files:
-                last_report_time = datetime.fromtimestamp(report_files[0].stat().st_ctime, tz=zoneinfo.ZoneInfo(self.hass.config.time_zone))
-
-        if last_report_time:
-            next_run = last_report_time.replace(
-                hour=REPORT_GENERATION_HOUR,
-                minute=REPORT_GENERATION_MINUTE,
-                second=0,
-                microsecond=0
-            ) + timedelta(days=interval_days)
-            if next_run <= now:
-                next_run = next_run + timedelta(days=interval_days)
-        else:
-            next_run = now.replace(
-                hour=REPORT_GENERATION_HOUR,
-                minute=REPORT_GENERATION_MINUTE,
-                second=0,
-                microsecond=0
-            )
-            if next_run <= now:
-                next_run = next_run + timedelta(days=1)
-
-        _LOGGER.info(f"Zaplanowano następną analizę na: {next_run}")
-        return next_run
-
-    def _schedule_next_update(self, next_run):
-        if self._remove_update_listener:
-            self._remove_update_listener()
-            self._remove_update_listener = None
-        self._remove_update_listener = async_track_point_in_time(
-            self.hass, self._handle_update, next_run
-        )
-        next_run_with_tz = next_run.replace(tzinfo=zoneinfo.ZoneInfo(self.hass.config.time_zone))
-        self._store_next_run_time(next_run_with_tz)
-
-    async def _handle_update(self, _now=None):
-        _LOGGER.info("Rozpoczynam zaplanowaną analizę logów")
-        await self.async_refresh()
-
-    def _store_next_run_time(self, next_run):
-        self.hass.async_create_task(
-            self._store.async_save({"next_scheduled_run": next_run.isoformat()})
-        )
-
-    async def _load_stored_next_run_time(self):
-        stored = await self._store.async_load()
-        if stored and "next_scheduled_run" in stored:
-            try:
-                next_run_str = stored["next_scheduled_run"]
-                next_run = datetime.fromisoformat(next_run_str)
-                now = datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone))
-                if next_run > now:
-                    self.data["next_scheduled_run"] = next_run_str
-                    self._schedule_next_update(next_run.replace(tzinfo=None))
-                    return True
-                else:
-                    next_run = self._calculate_next_run_time()
-                    next_run_with_tz = next_run.replace(tzinfo=zoneinfo.ZoneInfo(self.hass.config.time_zone))
-                    self.data["next_scheduled_run"] = next_run_with_tz.isoformat()
-                    self._schedule_next_update(next_run)
-                    return True
-            except (ValueError, TypeError) as e:
-                _LOGGER.error(f"Błąd podczas wczytywania zapisanej daty: {e}")
-
-        next_run = self._calculate_next_run_time()
-        next_run_with_tz = next_run.replace(tzinfo=zoneinfo.ZoneInfo(self.hass.config.time_zone))
-        self.data["next_scheduled_run"] = next_run_with_tz.isoformat()
-        self._schedule_next_update(next_run)
+    # 2) Pobierz i usuń dane z hass.data
+    data = hass.data[DOMAIN].pop(entry.entry_id, None)
+    if not data:
         return True
 
-    async def _get_system_logs(self) -> str:
-        log_path = Path(self.hass.config.path("home-assistant.log"))
-        try:
-            content = await self.hass.async_add_executor_job(
-                lambda: log_path.read_text(encoding="utf-8") if log_path.exists() else ""
-            )
-            if not content:
-                _LOGGER.warning("Plik logów jest pusty lub nie istnieje: %s", log_path)
-            return content
-        except Exception as err:
-            _LOGGER.error("Błąd odczytu logów: %s", err)
-            return ""
+    coord = data.get("coordinator")
+    ai_coord = data.get("ai_coordinator")
 
-    def _filter_logs(self, logs: str, levels: list) -> str:
-        if not logs:
-            _LOGGER.debug("Plik logów jest pusty.")
-            return ""
-        level_map = {
-            "DEBUG": "DEBUG",
-            "INFO": "INFO",
-            "WARNING": "WARNING",
-            "ERROR": "ERROR",
-            "CRITICAL": "CRITICAL",
-            "Debug": "DEBUG",
-            "Informacyjne": "INFO",
-            "Ostrzeżenia": "WARNING",
-            "Błędy": "ERROR",
-            "Krytyczne": "CRITICAL",
-        }
-        mapped_levels = [level_map.get(level, level).upper() for level in levels]
-        _LOGGER.debug("Wybrane poziomy logów (po mapowaniu): %s", mapped_levels)
-        filtered_lines = []
-        count = 0
-        for line in logs.split('\n'):
-            if any(f" {level} " in line for level in mapped_levels):
-                filtered_lines.append(line)
-                count += 1
-            if count >= 6000:
-                _LOGGER.info("Osiągnięto limit 6000 linii logów, obcinam pozostałe")
-                break
-        filtered_logs = '\n'.join(filtered_lines)
-        _LOGGER.debug("Liczba linii po filtracji: %d", len(filtered_lines))
-        return filtered_logs
+    # 3) Usuń listener na zmiany opcji (jeśli był zarejestrowany)
+    if coord and getattr(coord, "_remove_update_listener", None):
+        coord._remove_update_listener()
 
-    async def _save_to_file(self, analysis: str, logs: str) -> None:
-        # Najpierw wyczyść stare raporty przed dodaniem nowego
-        await self._cleanup_old_reports(preserve_space=True)
-    
-        report_dir = Path(self.hass.config.path("ai_reports"))
-        await self.hass.async_add_executor_job(
-            lambda: report_dir.mkdir(exist_ok=True)
-        )
-    
-        # Nowy format nazwy pliku: 2025-05-06.json
-        timestamp = datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone))
-        base_filename = f"{timestamp.strftime('%Y-%m-%d')}.json"
-    
-        # Sprawdź czy plik już istnieje i dodaj przyrostek jeśli tak
-        def get_unique_filename():
-            if not (report_dir / base_filename).exists():
-                return base_filename
-            
-            # Szukaj plików z tym samym prefiksem daty
-            date_prefix = timestamp.strftime('%Y-%m-%d')
-            matching_files = list(report_dir.glob(f"{date_prefix}*.json"))
-        
-            # Znajdź najwyższy numer przyrostka
-            highest_suffix = 1
-            for file in matching_files:
-                name = file.stem  # nazwa bez rozszerzenia
-                if "_" in name:
-                    try:
-                        suffix = int(name.split("_")[-1])
-                        highest_suffix = max(highest_suffix, suffix)
-                    except ValueError:
-                        pass
-        
-            # Utwórz nową nazwę z przyrostkiem
-            return f"{date_prefix}_{highest_suffix + 1}.json"
-    
-        filename = await self.hass.async_add_executor_job(get_unique_filename)
-        report_path = report_dir / filename
-    
-        data = {
-            "timestamp": timestamp.strftime("%Y-%m-%d %H:%M"),
-            "report": analysis,
-            "log_snippet": logs[-10000:] if len(logs) > 10000 else logs,
-        }
-    
-        await self.hass.async_add_executor_job(
-            lambda: report_path.write_text(
-                json.dumps(data, indent=2, ensure_ascii=False),
-                encoding="utf-8"
-            )
-        )
-    
-        _LOGGER.info("Zapisano raport do pliku: %s", report_path)
-    
-        # Aktualizuj input_select po zapisaniu pliku
-        await update_input_select_options(self.hass)
-        await self.async_request_refresh()
+    # 4) Zamknij klienta OpenAI w LogAnalysisCoordinator
+    if coord and hasattr(coord, "analyzer") and getattr(coord.analyzer, "client", None):
+        await coord.analyzer.close()
 
+    # 5) Unsubscribe learning mode w AIAnalyticsCoordinator
+    if ai_coord and getattr(ai_coord, "_learning_unsub", None):
+        ai_coord._learning_unsub()
+        ai_coord._learning_unsub = None
 
-    async def _cleanup_old_reports(self, preserve_space=False) -> None:
-        max_reports = int(self.entry.options.get(CONF_MAX_REPORTS, "10"))
+    return True
+
     
-        # Jeśli mamy zrobić miejsce na nowy raport, zmniejszamy limit o 1
-        if preserve_space:
-            max_reports -= 1
-    
-        report_dir = Path(self.hass.config.path("ai_reports"))
-        exists = await self.hass.async_add_executor_job(
-            lambda: report_dir.exists()
-        )
-        if not exists:
-            return
-        
-        files = await self.hass.async_add_executor_job(
-            lambda: [f for f in report_dir.iterdir() if f.is_file() and f.name.endswith('.json')]
-        )
-    
-        if len(files) <= max_reports:
-            return
-        
-        files_with_time = await self.hass.async_add_executor_job(
-            lambda: [(f, f.stat().st_ctime) for f in files]
-        )
-    
-        # Sortujemy od najstarszego do najnowszego
-        files_with_time.sort(key=lambda x: x[1])
-    
-        # Usuwamy najstarsze pliki, aby osiągnąć docelową liczbę
-        for old_file, _ in files_with_time[:len(files) - max_reports]:
-            try:
-                await self.hass.async_add_executor_job(
-                    lambda f=old_file: f.unlink()
-                )
-                _LOGGER.debug("Usunięto stary raport: %s", old_file)
-            except Exception as e:
-                _LOGGER.error(f"Błąd podczas usuwania raportu {old_file}: {e}")

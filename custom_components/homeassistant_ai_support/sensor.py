@@ -256,19 +256,49 @@ class SelectedReportSensor(SensorEntity):
             self._attr_extra_state_attributes = {}
             self.async_write_ha_state()
             return
+
         file_name = selected.state
         self._state = file_name
-        file_path = Path(self.hass.config.path("ai_reports")) / file_name
+        report_dir = Path(self.hass.config.path("ai_reports"))
+        file_path = report_dir / file_name
+
+        # Sprawdzenie bezpieczeństwa ścieżki
+        try:
+            if not file_path.resolve().is_relative_to(report_dir.resolve()):
+                _LOGGER.error("Próba dostępu do pliku poza dozwolonym katalogiem: %s", file_path)
+                self._state = self._no_report_msg
+                self._attr_extra_state_attributes = {}
+                self.async_write_ha_state()
+                return
+        except (ValueError, RuntimeError) as e:
+            _LOGGER.error("Błąd podczas walidacji ścieżki pliku: %s", e)
+            self._state = self._no_report_msg
+            self._attr_extra_state_attributes = {}
+            self.async_write_ha_state()
+            return
+
         if not await self.hass.async_add_executor_job(lambda: file_path.exists()):
             self._state = self._no_report_msg
             self._attr_extra_state_attributes = {}
             self.async_write_ha_state()
             return
+
+        if not await self.hass.async_add_executor_job(lambda: file_path.is_file()):
+            _LOGGER.error("Ścieżka nie wskazuje na plik: %s", file_path)
+            self._state = self._no_report_msg
+            self._attr_extra_state_attributes = {}
+            self.async_write_ha_state()
+            return
+
         try:
             def _load_json(path):
                 with path.open(encoding="utf-8") as f:
                     return json.load(f)
             data = await self.hass.async_add_executor_job(_load_json, file_path)
+
+            if not isinstance(data, dict):
+                raise ValueError("Raport JSON nie zawiera poprawnych danych (oczekiwano dict)")
+
             self._attr_extra_state_attributes = {
                 "timestamp": data.get("timestamp"),
                 "report": data.get("report", ""),
@@ -357,6 +387,7 @@ class BaselineBuildingSensor(CoordinatorEntity, SensorEntity):
 
 class AnomalyDetectionSensor(CoordinatorEntity, SensorEntity):
     _attr_icon = "mdi:alert-circle-outline"
+    _attr_has_entity_name = True
 
     def __init__(self, coordinator):
         super().__init__(coordinator)
@@ -367,15 +398,43 @@ class AnomalyDetectionSensor(CoordinatorEntity, SensorEntity):
             name="AI Support",
             manufacturer="Custom Integration"
         )
-
+        
     @property
     def native_value(self):
         return len(self.coordinator.anomaly_detector.detected_anomalies)
-
+        
     @property
     def extra_state_attributes(self):
+        anomalies = self.coordinator.anomaly_detector.detected_anomalies
+        anomaly_details = []
+        
+        for anomaly in anomalies:
+            anomaly_details.append({
+                "entity_id": anomaly.get("entity_id"),
+                "current_value": anomaly.get("current_value"),
+                "expected_range": anomaly.get("expected_range", ""),
+                "deviation": anomaly.get("deviation", ""),
+                "type": anomaly.get("type"),
+                "severity": anomaly.get("severity", "unknown"),
+                "detected_at": anomaly.get("detected_at"),
+                "friendly_name": anomaly.get("friendly_name", "")
+            })
+        
         return {
             "last_anomaly": self.coordinator.anomaly_detector.last_anomaly_time,
             "false_alarms": self.coordinator.anomaly_detector.false_alarm_count,
-            "sensitivity": self.coordinator.anomaly_detector.current_sensitivity
+            "sensitivity": self.coordinator.anomaly_detector.current_sensitivity,
+            "anomaly_details": anomaly_details,
+            "baseline_age": self.coordinator.anomaly_detector.get_baseline_age(),
+            "monitoring_active": self.coordinator.monitoring_active
         }
+        
+    @property
+    def icon(self):
+        # Dynamiczna ikona zależna od stanu
+        if len(self.coordinator.anomaly_detector.detected_anomalies) > 0:
+            return "mdi:alert-circle"  # Czerwony alert
+        elif not self.coordinator.monitoring_active:
+            return "mdi:shield-off-outline"  # Monitoring nieaktywny
+        else:
+            return "mdi:shield-check"  # Wszystko w porządku

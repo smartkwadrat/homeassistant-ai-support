@@ -18,7 +18,13 @@
             "priority_check_interval": "Priority Entities Check Interval",
             "anomaly_check_interval": "Anomaly Check Interval (minutes)",
             "baseline_refresh_interval": "Baseline Refresh Interval",
-            "learning_mode": "Learning Mode"
+            "learning_mode": "Learning Mode",
+            "binary_flip_threshold_low": "Binary Low Anomaly Threshold",
+            "binary_flip_threshold_medium": "Binary Medium Anomaly Threshold",
+            "binary_flip_threshold_high": "Binary High Anomaly Threshold",
+            "entity_sensitivity": "Per-entity Sensitivity",
+            "default_sigma": "Default Sensitivity (sigma)",
+            "baseline_window_days": "Baseline Window (days)"
           }
         },
         "error": {
@@ -47,7 +53,13 @@
             "priority_check_interval": "Priority Entities Check Interval",
             "anomaly_check_interval": "Anomaly Check Interval (minutes)",
             "baseline_refresh_interval": "Baseline Refresh Interval",
-            "learning_mode": "Learning Mode"
+            "learning_mode": "Learning Mode",
+            "binary_flip_threshold_low": "Binary Low Anomaly Threshold",
+            "binary_flip_threshold_medium": "Binary Medium Anomaly Threshold",
+            "binary_flip_threshold_high": "Binary High Anomaly Threshold",
+            "entity_sensitivity": "Per-entity Sensitivity",
+            "default_sigma": "Default Sensitivity (sigma)",
+            "baseline_window_days": "Baseline Window (days)"
           }
         }
       }

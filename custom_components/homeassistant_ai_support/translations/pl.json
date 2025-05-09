@@ -18,7 +18,13 @@
             "priority_check_interval": "Interwał sprawdzania priorytetowych encji",
             "anomaly_check_interval": "Interwał wykrywania anomalii (minuty)",
             "baseline_refresh_interval": "Interwał odświeżania baseline",
-            "learning_mode": "Tryb nauki"
+            "learning_mode": "Tryb nauki",
+            "binary_flip_threshold_low": "Próg niskiej anomalii binarnej",
+            "binary_flip_threshold_medium": "Próg średniej anomalii binarnej",
+            "binary_flip_threshold_high": "Próg wysokiej anomalii binarnej",
+            "entity_sensitivity": "Czułość per encja",
+            "default_sigma": "Domyślna czułość (sigma)",
+            "baseline_window_days": "Okno bazowe (dni)"
           }
         },
         "error": {
@@ -47,7 +53,13 @@
             "priority_check_interval": "Interwał sprawdzania priorytetowych encji",
             "anomaly_check_interval": "Interwał wykrywania anomalii (minuty)",
             "baseline_refresh_interval": "Interwał odświeżania baseline",
-            "learning_mode": "Tryb nauki"
+            "learning_mode": "Tryb nauki",
+            "binary_flip_threshold_low": "Próg niskiej anomalii binarnej",
+            "binary_flip_threshold_medium": "Próg średniej anomalii binarnej",
+            "binary_flip_threshold_high": "Próg wysokiej anomalii binarnej",
+            "entity_sensitivity": "Czułość per encja",
+            "default_sigma": "Domyślna czułość (sigma)",
+            "baseline_window_days": "Okno bazowe (dni)"
           }
         }
       }

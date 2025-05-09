@@ -27,6 +27,16 @@ from .const import (
     CONF_ANOMALY_CHECK_INTERVAL,
     CONF_BASELINE_REFRESH_INTERVAL,
     CONF_LEARNING_MODE,
+    CONF_BINARY_FLIP_THRESHOLD_LOW,
+    CONF_BINARY_FLIP_THRESHOLD_MEDIUM,
+    CONF_BINARY_FLIP_THRESHOLD_HIGH,
+    DEFAULT_BINARY_FLIP_THRESHOLD_LOW,
+    DEFAULT_BINARY_FLIP_THRESHOLD_MEDIUM,
+    DEFAULT_BINARY_FLIP_THRESHOLD_HIGH,
+    CONF_DEFAULT_SIGMA,
+    DEFAULT_SIGMA,
+    CONF_BASELINE_WINDOW_DAYS,
+    DEFAULT_BASELINE_WINDOW_DAYS,
     MODEL_MAPPING,
     DEFAULT_MODEL,
     DEFAULT_SYSTEM_PROMPT,
@@ -49,6 +59,7 @@ from .const import (
     STANDARD_CHECK_INTERVAL_OPTIONS,
     PRIORITY_CHECK_INTERVAL_OPTIONS
 )
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -127,6 +138,31 @@ STEP_USER_DATA_SCHEMA = vol.Schema({
         )
     ),
     vol.Optional(CONF_LEARNING_MODE, default=DEFAULT_LEARNING_MODE): bool,
+    vol.Optional(
+        CONF_DEFAULT_SIGMA,
+        default=DEFAULT_SIGMA
+    ): vol.All(vol.Coerce(float), vol.Range(min=1.0, max=10.0)),
+
+    vol.Optional(
+        CONF_BASELINE_WINDOW_DAYS,
+        default=DEFAULT_BASELINE_WINDOW_DAYS
+    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=90)),
+
+    vol.Optional(
+        CONF_BINARY_FLIP_THRESHOLD_LOW,
+        default=DEFAULT_BINARY_FLIP_THRESHOLD_LOW
+    ): vol.All(vol.Coerce(float), vol.Range(min=0.01, max=0.5)),
+
+    vol.Optional(
+        CONF_BINARY_FLIP_THRESHOLD_MEDIUM,
+        default=DEFAULT_BINARY_FLIP_THRESHOLD_MEDIUM
+    ): vol.All(vol.Coerce(float), vol.Range(min=0.005, max=0.3)),
+
+    vol.Optional(
+        CONF_BINARY_FLIP_THRESHOLD_HIGH,
+        default=DEFAULT_BINARY_FLIP_THRESHOLD_HIGH
+    ): vol.All(vol.Coerce(float), vol.Range(min=0.001, max=0.1)),
+
 })
 
 
@@ -288,6 +324,26 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 CONF_LEARNING_MODE,
                 default=opts.get(CONF_LEARNING_MODE, data.get(CONF_LEARNING_MODE, DEFAULT_LEARNING_MODE))
             ): bool,
+            vol.Optional(
+                CONF_DEFAULT_SIGMA,
+                default=opts.get(CONF_DEFAULT_SIGMA, DEFAULT_SIGMA)
+            ): vol.All(vol.Coerce(float), vol.Range(min=1.0, max=10.0)),
+            vol.Optional(
+                CONF_BASELINE_WINDOW_DAYS,
+                default=opts.get(CONF_BASELINE_WINDOW_DAYS, DEFAULT_BASELINE_WINDOW_DAYS)
+            ): vol.All(vol.Coerce(int), vol.Range(min=1, max=90)),
+            vol.Optional(
+                CONF_BINARY_FLIP_THRESHOLD_LOW,
+                default=opts.get(CONF_BINARY_FLIP_THRESHOLD_LOW, DEFAULT_BINARY_FLIP_THRESHOLD_LOW)
+            ): vol.All(vol.Coerce(float), vol.Range(min=0.01, max=0.5)),
+            vol.Optional(
+                CONF_BINARY_FLIP_THRESHOLD_MEDIUM,
+                default=opts.get(CONF_BINARY_FLIP_THRESHOLD_MEDIUM, DEFAULT_BINARY_FLIP_THRESHOLD_MEDIUM)
+            ): vol.All(vol.Coerce(float), vol.Range(min=0.005, max=0.3)),
+            vol.Optional(
+                CONF_BINARY_FLIP_THRESHOLD_HIGH,
+                default=opts.get(CONF_BINARY_FLIP_THRESHOLD_HIGH, DEFAULT_BINARY_FLIP_THRESHOLD_HIGH)
+            ): vol.All(vol.Coerce(float), vol.Range(min=0.001, max=0.1)),
         })
 
     async def async_step_init(

@@ -11,7 +11,6 @@ from homeassistant.components.button import ButtonEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
 
 from .const import DOMAIN
 
@@ -176,6 +175,6 @@ async def async_setup_entry(hass, entry: ConfigEntry, async_add_entities):
 
     async_add_entities([
         GenerateReportButton(coordinator),
-        DiscoverEntitiesButton(coordinator),
-        BuildBaselineButton(coordinator),
+        DiscoverEntitiesButton(ai_coordinator), 
+        BuildBaselineButton(ai_coordinator),
     ])
