@@ -19,13 +19,17 @@ class OpenAIAnalyzer:
         self.client = None  # będzie inicjalizowany asynchronicznie
 
     async def async_init_client(self):
-        def create_client():
-            from openai import AsyncOpenAI
-            return AsyncOpenAI(
-                api_key=self.api_key,
-                max_retries=3
-            )
-        self.client = await self.hass.async_add_executor_job(create_client)
+        try:
+            def create_client():
+                from openai import AsyncOpenAI
+                return AsyncOpenAI(
+                    api_key=self.api_key,
+                    max_retries=3
+                )
+            self.client = await self.hass.async_add_executor_job(create_client)
+        except Exception as err:
+            _LOGGER.error("Błąd podczas inicjalizacji klienta OpenAI: %s", err)
+            raise
 
     async def analyze_logs(self, logs: str, cost_optimization: bool, max_retries: int = 3) -> str:
         if not logs.strip():
@@ -102,15 +106,11 @@ class OpenAIAnalyzer:
                 return "Nieprawidłowy klucz API OpenAI. Sprawdź swój klucz API w konfiguracji."
             
             except RateLimitError as err:
-                _LOGGER.error("Przekroczono limit zapytań: %s", err)
-            
-                # Jeśli to ostatnia próba, zwróć komunikat
+                _LOGGER.error("Przekroczono limit zapytań: %s, headers: %s", err, getattr(err, 'headers', 'Brak danych'))
                 if attempt == max_retries - 1:
                     return "Przekroczono limit zapytań do API OpenAI. Spróbuj ponownie później."
-                
-                # Czekaj dłużej przed ponowną próbą przy limicie rate
-                wait_time = (attempt + 1) * 5  # Eksponencjalne wydłużanie czasu oczekiwania
-                _LOGGER.info("Czekam %d sekund przed ponowną próbą...", wait_time)
+                wait_time = (attempt + 1) * 5
+                _LOGGER.info("Czekam %d sekund przed ponowną próbą z powodu limitu zapytań...", wait_time)
                 await asyncio.sleep(wait_time)
             
             except APIError as err:

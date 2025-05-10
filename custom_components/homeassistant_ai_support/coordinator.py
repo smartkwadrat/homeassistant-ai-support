@@ -275,13 +275,12 @@ class AIAnalyticsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # Utwórz powiadomienie dla anomalii o wysokiej/krytycznej ważności
                 if severity in ["high", "critical"]:
                     friendly_name = anomaly.get("friendly_name", entity_id)
-                    await self.hass.services.async_call(
-                        "persistent_notification",
-                        "create",
+                    self.hass.bus.async_fire(
+                        "config_entry_discovered",
                         {
                             "title": f"Wykryto anomalię: {friendly_name}",
                             "message": f"Encja: {entity_id}\nWartość: {current_value}\nWażność: {severity}",
-                            "notification_id": f"anomaly_{entity_id.replace('.', '_')}"
+                            "entity_id": entity_id
                         }
                     )
                     
@@ -599,12 +598,9 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "log_snippet": logs[-10000:] if len(logs) > 10000 else logs,
         }
     
-        await self.hass.async_add_executor_job(
-            lambda: report_path.write_text(
-                json.dumps(data, indent=2, ensure_ascii=False),
-                encoding="utf-8"
-            )
-        )
+        import aiofiles
+        async with aiofiles.open(report_path, 'w', encoding='utf-8') as f:
+            await f.write(json.dumps(data, indent=2, ensure_ascii=False))
     
         _LOGGER.info("Zapisano raport do pliku: %s", report_path)
     

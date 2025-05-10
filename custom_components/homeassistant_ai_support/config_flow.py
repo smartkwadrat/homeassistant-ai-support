@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import logging
-from typing import Any, Mapping
+from typing import Any
 
 import voluptuous as vol
 from homeassistant import config_entries
@@ -59,9 +58,6 @@ from .const import (
     STANDARD_CHECK_INTERVAL_OPTIONS,
     PRIORITY_CHECK_INTERVAL_OPTIONS
 )
-
-
-_LOGGER = logging.getLogger(__name__)
 
 # Schema for initial user step
 STEP_USER_DATA_SCHEMA = vol.Schema({
@@ -214,26 +210,30 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, config_entry: ConfigEntry) -> None:
         self._config_entry = config_entry
 
+    def _get_option(self, key: str, default: Any) -> Any:
+        """Zwraca wartość opcji z entry.options lub entry.data, a w razie braku – default."""
+        opts = self._config_entry.options or {}
+        data = self._config_entry.data or {}
+        return opts.get(key, data.get(key, default))
+
     def _build_options_schema(self) -> vol.Schema:
-        opts: Mapping[str, Any] = self._config_entry.options or {}
-        data: Mapping[str, Any] = self._config_entry.data or {}
 
         return vol.Schema({
             vol.Required(
                 CONF_API_KEY,
-                default=opts.get(CONF_API_KEY, data.get(CONF_API_KEY, ""))
+                default=self._get_option(CONF_API_KEY, "")
             ): cv.string,
             vol.Optional(
                 CONF_MODEL,
-                default=opts.get(CONF_MODEL, data.get(CONF_MODEL, DEFAULT_MODEL))
+                default=self._get_option(CONF_MODEL, DEFAULT_MODEL)
             ): vol.In(MODEL_MAPPING.keys()),
             vol.Optional(
                 CONF_SYSTEM_PROMPT,
-                default=opts.get(CONF_SYSTEM_PROMPT, data.get(CONF_SYSTEM_PROMPT, DEFAULT_SYSTEM_PROMPT))
+                default=self._get_option(CONF_SYSTEM_PROMPT, DEFAULT_SYSTEM_PROMPT)
             ): TemplateSelector(),
             vol.Optional(
                 CONF_SCAN_INTERVAL,
-                default=opts.get(CONF_SCAN_INTERVAL, data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
+                default=self._get_option(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=[
@@ -248,11 +248,11 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             ),
             vol.Optional(
                 CONF_COST_OPTIMIZATION,
-                default=opts.get(CONF_COST_OPTIMIZATION, data.get(CONF_COST_OPTIMIZATION, DEFAULT_COST_OPTIMIZATION))
+                default=self._get_option(CONF_COST_OPTIMIZATION, DEFAULT_COST_OPTIMIZATION)
             ): bool,
             vol.Optional(
                 CONF_LOG_LEVELS,
-                default=opts.get(CONF_LOG_LEVELS, data.get(CONF_LOG_LEVELS, DEFAULT_LOG_LEVELS))
+                default=self._get_option(CONF_LOG_LEVELS, DEFAULT_LOG_LEVELS)
             ): cv.multi_select({
                 "DEBUG": "Debug",
                 "INFO": "Informacyjne",
@@ -262,7 +262,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             }),
             vol.Optional(
                 CONF_MAX_REPORTS,
-                default=str(opts.get(CONF_MAX_REPORTS, data.get(CONF_MAX_REPORTS, DEFAULT_MAX_REPORTS)))
+                default=self._get_option(CONF_MAX_REPORTS, DEFAULT_MAX_REPORTS)
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=[
@@ -277,13 +277,19 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             ),
             vol.Optional(
                 CONF_DIAGNOSTIC_INTEGRATION,
-                default=opts.get(CONF_DIAGNOSTIC_INTEGRATION, data.get(CONF_DIAGNOSTIC_INTEGRATION, DEFAULT_DIAGNOSTIC_INTEGRATION))
+                default=self._get_option(CONF_DIAGNOSTIC_INTEGRATION, DEFAULT_DIAGNOSTIC_INTEGRATION)
             ): bool,
             vol.Optional(
                 CONF_ENTITY_COUNT,
-                default=opts.get(CONF_ENTITY_COUNT, data.get(CONF_ENTITY_COUNT, DEFAULT_ENTITY_COUNT))
+                default=self._get_option(CONF_ENTITY_COUNT, DEFAULT_ENTITY_COUNT)
             ): vol.All(vol.Coerce(int), vol.Range(min=10, max=200)),
-            vol.Optional(CONF_STANDARD_CHECK_INTERVAL, default=DEFAULT_STANDARD_CHECK_INTERVAL): selector.SelectSelector(
+            vol.Optional(
+                CONF_STANDARD_CHECK_INTERVAL,
+                default=self._get_option(
+                    CONF_STANDARD_CHECK_INTERVAL,
+                    DEFAULT_STANDARD_CHECK_INTERVAL
+                )
+            ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=[
                         selector.SelectOptionDict(value=k, label=v)
@@ -293,7 +299,13 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     translation_key="standard_check_interval_options"
                 )
             ),
-            vol.Optional(CONF_PRIORITY_CHECK_INTERVAL, default=DEFAULT_PRIORITY_CHECK_INTERVAL): selector.SelectSelector(
+            vol.Optional(
+                CONF_PRIORITY_CHECK_INTERVAL,
+                default=self._get_option(
+                    CONF_PRIORITY_CHECK_INTERVAL,
+                    DEFAULT_PRIORITY_CHECK_INTERVAL
+                )
+            ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=[
                         selector.SelectOptionDict(value=k, label=v)
@@ -305,11 +317,11 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             ),
             vol.Optional(
                 CONF_ANOMALY_CHECK_INTERVAL,
-                default=opts.get(CONF_ANOMALY_CHECK_INTERVAL, data.get(CONF_ANOMALY_CHECK_INTERVAL, DEFAULT_ANOMALY_CHECK_INTERVAL))
+                default=self._get_option(CONF_ANOMALY_CHECK_INTERVAL, DEFAULT_ANOMALY_CHECK_INTERVAL)
             ): vol.All(vol.Coerce(int), vol.Range(min=60, max=1440)),
             vol.Optional(
                 CONF_BASELINE_REFRESH_INTERVAL,
-                default=opts.get(CONF_BASELINE_REFRESH_INTERVAL, data.get(CONF_BASELINE_REFRESH_INTERVAL, DEFAULT_BASELINE_REFRESH_INTERVAL))
+                default=self._get_option(CONF_BASELINE_REFRESH_INTERVAL, DEFAULT_BASELINE_REFRESH_INTERVAL)
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=[
@@ -322,27 +334,27 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 ),
             vol.Optional(
                 CONF_LEARNING_MODE,
-                default=opts.get(CONF_LEARNING_MODE, data.get(CONF_LEARNING_MODE, DEFAULT_LEARNING_MODE))
+                default=self._get_option(CONF_LEARNING_MODE, DEFAULT_LEARNING_MODE)
             ): bool,
             vol.Optional(
                 CONF_DEFAULT_SIGMA,
-                default=opts.get(CONF_DEFAULT_SIGMA, DEFAULT_SIGMA)
+                default=self._get_option(CONF_DEFAULT_SIGMA, DEFAULT_SIGMA)
             ): vol.All(vol.Coerce(float), vol.Range(min=1.0, max=10.0)),
             vol.Optional(
                 CONF_BASELINE_WINDOW_DAYS,
-                default=opts.get(CONF_BASELINE_WINDOW_DAYS, DEFAULT_BASELINE_WINDOW_DAYS)
+                default=self._get_option(CONF_BASELINE_WINDOW_DAYS, DEFAULT_BASELINE_WINDOW_DAYS)
             ): vol.All(vol.Coerce(int), vol.Range(min=1, max=90)),
             vol.Optional(
                 CONF_BINARY_FLIP_THRESHOLD_LOW,
-                default=opts.get(CONF_BINARY_FLIP_THRESHOLD_LOW, DEFAULT_BINARY_FLIP_THRESHOLD_LOW)
+                default=self._get_option(CONF_BINARY_FLIP_THRESHOLD_LOW, DEFAULT_BINARY_FLIP_THRESHOLD_LOW)
             ): vol.All(vol.Coerce(float), vol.Range(min=0.01, max=0.5)),
             vol.Optional(
                 CONF_BINARY_FLIP_THRESHOLD_MEDIUM,
-                default=opts.get(CONF_BINARY_FLIP_THRESHOLD_MEDIUM, DEFAULT_BINARY_FLIP_THRESHOLD_MEDIUM)
+                default=self._get_option(CONF_BINARY_FLIP_THRESHOLD_MEDIUM, DEFAULT_BINARY_FLIP_THRESHOLD_MEDIUM)
             ): vol.All(vol.Coerce(float), vol.Range(min=0.005, max=0.3)),
             vol.Optional(
                 CONF_BINARY_FLIP_THRESHOLD_HIGH,
-                default=opts.get(CONF_BINARY_FLIP_THRESHOLD_HIGH, DEFAULT_BINARY_FLIP_THRESHOLD_HIGH)
+                default=self._get_option(CONF_BINARY_FLIP_THRESHOLD_HIGH, DEFAULT_BINARY_FLIP_THRESHOLD_HIGH)
             ): vol.All(vol.Coerce(float), vol.Range(min=0.001, max=0.1)),
         })
 

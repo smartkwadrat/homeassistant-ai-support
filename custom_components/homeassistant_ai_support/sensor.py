@@ -123,13 +123,10 @@ class LogAnalysisSensor(CoordinatorEntity, SensorEntity):
                 reverse=True
             )
             if report_files:
-                def _load_json(path):
-                    with path.open(encoding="utf-8") as f:
-                        return json.load(f)
+                import aiofiles
                 try:
-                    self._latest_report = await self.coordinator.hass.async_add_executor_job(
-                        _load_json, report_files[0]
-                    )
+                    async with aiofiles.open(report_files[0], 'r', encoding='utf-8') as f:
+                        self._latest_report = json.loads(await f.read())
                 except Exception as e:
                     _LOGGER.error(f"Błąd odczytu raportu: {e}")
                     self._latest_report = {}
@@ -253,7 +250,7 @@ class SelectedReportSensor(SensorEntity):
         selected = self.hass.states.get(entity_id)
         if not selected or selected.state in ("unknown", "Brak raportów"):
             self._state = self._no_report_msg
-            self._attr_extra_state_attributes = {}
+            self._attr_extra_state_attributes = {"error": "No report selected"}
             self.async_write_ha_state()
             return
 
@@ -279,7 +276,7 @@ class SelectedReportSensor(SensorEntity):
 
         if not await self.hass.async_add_executor_job(lambda: file_path.exists()):
             self._state = self._no_report_msg
-            self._attr_extra_state_attributes = {}
+            self._attr_extra_state_attributes = {"error": "Report file does not exist"}
             self.async_write_ha_state()
             return
 
@@ -308,7 +305,8 @@ class SelectedReportSensor(SensorEntity):
             lang = get_lang(self.hass)
             error_msg = f"Błąd: {e}" if lang == "pl" else f"Error: {e}"
             self._state = error_msg
-            self._attr_extra_state_attributes = {}
+            self._attr_extra_state_attributes = {"error": str(e)}
+            self.async_write_ha_state()
         
         self.async_write_ha_state()
 

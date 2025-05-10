@@ -183,5 +183,3 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         ai_coord._learning_unsub = None
 
     return True
-
-    

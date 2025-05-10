@@ -107,15 +107,16 @@ class EntityManager:
             await self.hass.async_add_executor_job(self.entities_dir.mkdir, True, True)
 
             # Zapis do pliku
-            await self.hass.async_add_executor_job(self._write_json_file)
+            await self._write_json_file()
             _LOGGER.info("Zapisano wykryte encje do pliku: %s", self.entities_file)
         except Exception as e:
             _LOGGER.error("Błąd podczas zapisywania pliku JSON encji: %s", e)
 
-    def _write_json_file(self) -> None:
-        """Funkcja synchroniczna zapisująca JSON na dysku."""
-        with open(self.entities_file, 'w', encoding='utf-8') as f:
-            json.dump(self.monitored_entities, f, ensure_ascii=False, indent=2)
+    async def _write_json_file(self) -> None:
+        """Funkcja asynchroniczna zapisująca JSON na dysku."""
+        import aiofiles
+        async with aiofiles.open(self.entities_file, 'w', encoding='utf-8') as f:
+            await f.write(json.dumps(self.monitored_entities, ensure_ascii=False, indent=2))
 
     async def discover_entities(self, analyzer, entity_count: int = 20) -> bool:
         """Odkrywa kluczowe encje przy pomocy AI, zapisuje wynik i zwraca status."""
@@ -283,7 +284,7 @@ class BaselineBuilder:
                 models[ent] = self._model_categorical(states, wnd)
         
         # Zapisz do jednego pliku
-        await self.hass.async_add_executor_job(self._write_models, models)
+        await self._write_models(models)
         
         return models
 
@@ -387,9 +388,11 @@ class BaselineBuilder:
             "tuning": {"window_days": window_days}
         }
 
-    def _write_models(self, models: dict) -> None:
-        with open(self.baseline_path, 'w', encoding='utf-8') as f:
-            json.dump(models, f, ensure_ascii=False, indent=2)
+    async def _write_models(self, models: dict) -> None:
+        import aiofiles
+        async with aiofiles.open(self.baseline_path, 'w', encoding='utf-8') as f:
+            await f.write(json.dumps(models, ensure_ascii=False, indent=2))
+
 
     @staticmethod
     def _is_number(val: str) -> bool:
@@ -415,6 +418,7 @@ class AnomalyDetector:
         else:
             self.current_sensitivity = DEFAULT_SIGMA
         
+        hass.async_create_task(self._load_sensitivity())
         self.last_anomaly_time = None
         self.detected_anomalies = []
         self.baseline_path = Path(self.hass.config.path("ai_baseline.json"))
@@ -425,7 +429,16 @@ class AnomalyDetector:
         
         # Wczytaj listy encji
         self._load_entity_lists()
-        
+    
+    self.sensitivity_store = Store(hass, 1, f"{DOMAIN}_sensitivity")
+    
+    async def _load_sensitivity(self):
+        """Wczytuje zapisaną czułość z magazynu."""
+        stored = await self.sensitivity_store.async_load()
+        if stored and "sensitivity" in stored:
+            self.current_sensitivity = float(stored["sensitivity"])
+            _LOGGER.debug("Wczytano czułość: %s", self.current_sensitivity)
+
     async def _load_entity_lists(self):
         """Wczytaj listy encji standardowych i priorytetowych."""
         try:
@@ -743,3 +756,9 @@ class AnomalyDetector:
         
         # Dostosuj czułość na podstawie fałszywych alarmów
         self._adjust_sensitivity()
+        await self._save_sensitivity()
+
+    async def _save_sensitivity(self):
+        """Zapisuje aktualną czułość do trwałego magazynu."""
+        await self.sensitivity_store.async_save({"sensitivity": self.current_sensitivity})
+        _LOGGER.debug("Zapisano czułość: %s", self.current_sensitivity)
