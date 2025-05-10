@@ -1,5 +1,5 @@
 {
-    "name": "homeassistant_ai_support",
+    "name": "Home Assistant AI Support",
     "homeassistant": "2025.1.0",
     "render_readme": true,
     "content_in_root": false,

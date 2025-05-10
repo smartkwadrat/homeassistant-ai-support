@@ -1,6 +1,6 @@
 {
   "domain": "homeassistant_ai_support",
-  "name": "Wsparcie AI Home Assistant",
+  "name": "Home Assistant AI Support",
   "version": "0.9.2",
   "documentation": "https://github.com/smartkwadrat/homeassistant-ai-support",
   "issue_tracker": "https://github.com/smartkwadrat/homeassistant-ai-support/issues",
