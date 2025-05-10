@@ -36,8 +36,6 @@ from .const import (
     CONF_SYSTEM_PROMPT,
     MODEL_MAPPING,
 )
-from .anomaly_detector import BaselineBuilder, AnomalyDetector, EntityManager
-from .openai_handler import OpenAIAnalyzer
 from .__init__ import update_input_select_options
 
 _LOGGER = logging.getLogger(__name__)
@@ -46,6 +44,7 @@ class AIAnalyticsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinator for AI-driven tasks: entity discovery and baseline building with learning mode."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        from .anomaly_detector import AnomalyDetector, EntityManager
         # Read user options
         opts = entry.options
         baseline_refresh_opt = opts.get(
@@ -136,6 +135,7 @@ class AIAnalyticsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def start_baseline_building(self) -> None:
         """Build or rebuild the anomaly baseline for selected entities."""
+        from .anomaly_detector import BaselineBuilder
         tz = zoneinfo.ZoneInfo(self.hass.config.time_zone)
         self.baseline_status.update({
             "status": "initialization",
@@ -292,6 +292,7 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Class to manage fetching log analysis data."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        from .openai_handler import OpenAIAnalyzer
         self.entry = entry
         self.analyzer = OpenAIAnalyzer(
             hass=hass,

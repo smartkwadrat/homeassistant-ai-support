@@ -408,6 +408,7 @@ class AnomalyDetector:
     def __init__(self, hass):
         """Initialize the anomaly detector."""
         self.hass = hass
+        self.sensitivity_store = Store(hass, 1, f"{DOMAIN}_sensitivity")
         self.false_alarm_count = 0
         
         # Załaduj domyślną czułość z konfiguracji
@@ -429,8 +430,6 @@ class AnomalyDetector:
         
         # Wczytaj listy encji
         self._load_entity_lists()
-    
-    self.sensitivity_store = Store(hass, 1, f"{DOMAIN}_sensitivity")
     
     async def _load_sensitivity(self):
         """Wczytuje zapisaną czułość z magazynu."""

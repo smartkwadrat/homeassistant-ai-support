@@ -19,7 +19,6 @@ from .const import (
     DEFAULT_STANDARD_CHECK_INTERVAL,
     DEFAULT_PRIORITY_CHECK_INTERVAL,
 )
-from .coordinator import AIAnalyticsCoordinator, LogAnalysisCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -56,6 +55,7 @@ async def options_update_listener(hass: HomeAssistant, config_entry: ConfigEntry
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Home Assistant AI Support from a config entry."""
     try:
+        from .coordinator import AIAnalyticsCoordinator, LogAnalysisCoordinator
         # Update dropdown helper if present
         await update_input_select_options(hass)
 
