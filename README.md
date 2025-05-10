@@ -1,6 +1,6 @@
 # Home Assistant AI Support
 
-**Version 0.9.3**
+**Version 0.9.4**
 
 This custom integration for Home Assistant leverages AI models, such as OpenAI's ChatGPT, to analyze system logs, detect anomalies in entity behavior, and provide actionable insights. It automates log analysis, suggests potential issues, and helps maintain a smart home environment by identifying unusual patterns in your devices and sensors.
 
