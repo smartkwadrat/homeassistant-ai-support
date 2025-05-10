@@ -21,7 +21,7 @@ This custom integration for Home Assistant leverages AI models, such as OpenAI's
 
 ## Installation
 
-### Via HACS (Recommended)
+### Via HACS (NOT IMPLEMENTED YET)
 
 1. Install HACS (Home Assistant Community Store) if you haven't already.
 2. In HACS, go to **Integrations** and click the `+` button.
@@ -30,7 +30,7 @@ This custom integration for Home Assistant leverages AI models, such as OpenAI's
 5. Restart Home Assistant.
 6. Go to **Settings** → **Devices & Services** → **+ Add Integration** and search for `Home Assistant AI Support`.
 
-### Manual Installation
+### Manual Installation (Recommended)
 
 1. Download the contents of this repository.
 2. Copy the `custom_components/homeassistant_ai_support` folder to your Home Assistant's `custom_components` directory:
