@@ -304,16 +304,13 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._remove_update_listener = None
         self._first_startup = True
         self.logger = _LOGGER
-
         self._store = Store(hass, 1, f"{DOMAIN}_{entry.entry_id}")
-
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
             update_interval=None,
         )
-
         self.data = {
             "status": "waiting",
             "status_description": "Oczekiwanie na zaplanowaną analizę",
@@ -330,7 +327,6 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.data["next_scheduled_run"] = next_run_with_tz.isoformat()
             self._schedule_next_update(next_run)
             return self.data
-
         self.data = {
             **self.data,
             "status": "generating",
@@ -339,28 +335,23 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "last_update": datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone)).isoformat(),
         }
         self.async_update_listeners()
-
         try:
             self.data["status"] = "reading_logs"
             self.data["status_description"] = "Odczytuję pliki logów"
             self.data["progress"] = 10
             self.async_update_listeners()
             raw_logs = await self._get_system_logs()
-
             self.data["status"] = "filtering_logs"
             self.data["status_description"] = "Filtruję logi według wybranych poziomów"
             self.data["progress"] = 30
             self.async_update_listeners()
-
             if len(raw_logs) > 10000:
                 _LOGGER.info("Ograniczono rozmiar logów z %d do 10000 znaków", len(raw_logs))
                 raw_logs = raw_logs[-10000:]
-
             filtered_logs = self._filter_logs(
                 raw_logs,
                 self.entry.options.get(CONF_LOG_LEVELS, ["ERROR", "WARNING"])
             )
-
             if not filtered_logs:
                 _LOGGER.info("Brak pasujących logów do analizy")
                 return {
@@ -371,7 +362,6 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "last_run": datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone)).isoformat(),
                     "next_scheduled_run": self.data.get("next_scheduled_run"),
                 }
-
             self.data["status"] = "analyzing"
             self.data["status_description"] = "Analizuję logi przez AI (może potrwać kilka minut)"
             self.data["progress"] = 50
@@ -380,20 +370,17 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 filtered_logs,
                 self.entry.options.get(CONF_COST_OPTIMIZATION, False)
             )
-
             self.data["status"] = "saving"
             self.data["status_description"] = "Zapisuję raport"
             self.data["progress"] = 80
             self.async_update_listeners()
             await self._save_to_file(analysis, filtered_logs)
             await self._cleanup_old_reports()
-
             # Jeśli helper istnieje, zaktualizuj opcje dropdowna
             await update_input_select_options(self.hass)
-
             next_run = self._calculate_next_run_time()
             next_run_with_tz = next_run.replace(tzinfo=zoneinfo.ZoneInfo(self.hass.config.time_zone))
-            return {
+            self.data = {
                 **self.data,
                 "status": "success",
                 "status_description": "Raport został wygenerowany pomyślnie",
@@ -401,7 +388,8 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "last_run": datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone)).isoformat(),
                 "next_scheduled_run": next_run_with_tz.isoformat(),
             }
-
+            await self._save_report_times()
+            return self.data
         except asyncio.CancelledError:
             _LOGGER.warning("Anulowano operację aktualizacji danych")
             return {
@@ -430,10 +418,8 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         interval_option = self.entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         # Zabezpieczenie na wypadek nieprawidłowej wartości
         interval_days = SCAN_INTERVAL_OPTIONS.get(interval_option, SCAN_INTERVAL_OPTIONS[DEFAULT_SCAN_INTERVAL])
-
         report_dir = Path(self.hass.config.path("ai_reports"))
         last_report_time = None
-
         if report_dir.exists():
             report_files = sorted(
                 report_dir.glob("*.json"),
@@ -442,7 +428,6 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             if report_files:
                 last_report_time = datetime.fromtimestamp(report_files[0].stat().st_ctime, tz=zoneinfo.ZoneInfo(self.hass.config.time_zone))
-
         if last_report_time:
             next_run = last_report_time.replace(
                 hour=REPORT_GENERATION_HOUR,
@@ -461,7 +446,6 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             if next_run <= now:
                 next_run = next_run + timedelta(days=1)
-
         _LOGGER.info(f"Zaplanowano następną analizę na: {next_run}")
         return next_run
 
@@ -481,34 +465,43 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _store_next_run_time(self, next_run):
         self.hass.async_create_task(
-            self._store.async_save({"next_scheduled_run": next_run.isoformat()})
+            self._store.async_save({
+                "last_run": self.data.get("last_run"),
+                "next_scheduled_run": next_run.isoformat()
+            })
         )
 
     async def _load_stored_next_run_time(self):
         stored = await self._store.async_load()
-        if stored and "next_scheduled_run" in stored:
-            try:
-                next_run_str = stored["next_scheduled_run"]
-                next_run = datetime.fromisoformat(next_run_str)
-                now = datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone))
-                if next_run > now:
-                    self.data["next_scheduled_run"] = next_run_str
-                    self._schedule_next_update(next_run.replace(tzinfo=None))
-                    return True
-                else:
-                    next_run = self._calculate_next_run_time()
-                    next_run_with_tz = next_run.replace(tzinfo=zoneinfo.ZoneInfo(self.hass.config.time_zone))
-                    self.data["next_scheduled_run"] = next_run_with_tz.isoformat()
-                    self._schedule_next_update(next_run)
-                    return True
-            except (ValueError, TypeError) as e:
-                _LOGGER.error(f"Błąd podczas wczytywania zapisanej daty: {e}")
-
+        if stored:
+            if "last_run" in stored:
+                self.data["last_run"] = stored.get("last_run")
+                _LOGGER.debug("Wczytano czas ostatniego raportu: %s", self.data["last_run"])
+            if "next_scheduled_run" in stored:
+                try:
+                    next_run_str = stored["next_scheduled_run"]
+                    next_run = datetime.fromisoformat(next_run_str)
+                    now = datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone))
+                    if next_run > now:
+                        self.data["next_scheduled_run"] = next_run_str
+                        self._schedule_next_update(next_run.replace(tzinfo=None))
+                        return True
+                except (ValueError, TypeError) as e:
+                    _LOGGER.error(f"Błąd podczas wczytywania zapisanej daty: {e}")
         next_run = self._calculate_next_run_time()
         next_run_with_tz = next_run.replace(tzinfo=zoneinfo.ZoneInfo(self.hass.config.time_zone))
         self.data["next_scheduled_run"] = next_run_with_tz.isoformat()
         self._schedule_next_update(next_run)
         return True
+
+    async def _save_report_times(self):
+        """Zapisuje czasy raportu do trwałego magazynu."""
+        await self._store.async_save({
+            "last_run": self.data["last_run"],
+            "next_scheduled_run": self.data["next_scheduled_run"]
+        })
+        _LOGGER.debug("Zapisano czasy raportu: last_run=%s, next_scheduled_run=%s", 
+                      self.data["last_run"], self.data["next_scheduled_run"])
 
     async def _get_system_logs(self) -> str:
         log_path = Path(self.hass.config.path("home-assistant.log"))
@@ -547,9 +540,9 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if any(f" {level} " in line for level in mapped_levels):
                 filtered_lines.append(line)
                 count += 1
-            if count >= 6000:
-                _LOGGER.info("Osiągnięto limit 6000 linii logów, obcinam pozostałe")
-                break
+                if count >= 6000:
+                    _LOGGER.info("Osiągnięto limit 6000 linii logów, obcinam pozostałe")
+                    break
         filtered_logs = '\n'.join(filtered_lines)
         _LOGGER.debug("Liczba linii po filtracji: %d", len(filtered_lines))
         return filtered_logs
@@ -557,25 +550,20 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _save_to_file(self, analysis: str, logs: str) -> None:
         # Najpierw wyczyść stare raporty przed dodaniem nowego
         await self._cleanup_old_reports(preserve_space=True)
-    
         report_dir = Path(self.hass.config.path("ai_reports"))
         await self.hass.async_add_executor_job(
             lambda: report_dir.mkdir(exist_ok=True)
         )
-    
         # Nowy format nazwy pliku: 2025-05-06.json
         timestamp = datetime.now(tz=zoneinfo.ZoneInfo(self.hass.config.time_zone))
         base_filename = f"{timestamp.strftime('%Y-%m-%d')}.json"
-    
         # Sprawdź czy plik już istnieje i dodaj przyrostek jeśli tak
         def get_unique_filename():
             if not (report_dir / base_filename).exists():
                 return base_filename
-            
             # Szukaj plików z tym samym prefiksem daty
             date_prefix = timestamp.strftime('%Y-%m-%d')
             matching_files = list(report_dir.glob(f"{date_prefix}*.json"))
-        
             # Znajdź najwyższy numer przyrostka
             highest_suffix = 1
             for file in matching_files:
@@ -586,58 +574,44 @@ class LogAnalysisCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         highest_suffix = max(highest_suffix, suffix)
                     except ValueError:
                         pass
-        
             # Utwórz nową nazwę z przyrostkiem
             return f"{date_prefix}_{highest_suffix + 1}.json"
-    
         filename = await self.hass.async_add_executor_job(get_unique_filename)
         report_path = report_dir / filename
-    
         data = {
             "timestamp": timestamp.strftime("%Y-%m-%d %H:%M"),
             "report": analysis,
             "log_snippet": logs[-10000:] if len(logs) > 10000 else logs,
         }
-    
         import aiofiles
         async with aiofiles.open(report_path, 'w', encoding='utf-8') as f:
             await f.write(json.dumps(data, indent=2, ensure_ascii=False))
-    
         _LOGGER.info("Zapisano raport do pliku: %s", report_path)
-    
         # Aktualizuj input_select po zapisaniu pliku
         await update_input_select_options(self.hass)
         await self.async_request_refresh()
 
-
     async def _cleanup_old_reports(self, preserve_space=False) -> None:
         max_reports = int(self.entry.options.get(CONF_MAX_REPORTS, "10"))
-    
         # Jeśli mamy zrobić miejsce na nowy raport, zmniejszamy limit o 1
         if preserve_space:
             max_reports -= 1
-    
         report_dir = Path(self.hass.config.path("ai_reports"))
         exists = await self.hass.async_add_executor_job(
             lambda: report_dir.exists()
         )
         if not exists:
             return
-        
         files = await self.hass.async_add_executor_job(
             lambda: [f for f in report_dir.iterdir() if f.is_file() and f.name.endswith('.json')]
         )
-    
         if len(files) <= max_reports:
             return
-        
         files_with_time = await self.hass.async_add_executor_job(
             lambda: [(f, f.stat().st_ctime) for f in files]
         )
-    
         # Sortujemy od najstarszego do najnowszego
         files_with_time.sort(key=lambda x: x[1])
-    
         # Usuwamy najstarsze pliki, aby osiągnąć docelową liczbę
         for old_file, _ in files_with_time[:len(files) - max_reports]:
             try:

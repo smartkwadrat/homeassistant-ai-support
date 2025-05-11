@@ -83,7 +83,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.async_on_unload(remove_options_listener)
 
         # Forward to platforms
-        await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "button"])
+        await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "button", "diagnostics"])
 
         # Register on-demand analysis service
         async def handle_analyze_now(call):
@@ -157,7 +157,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     # 1) Odładuj platformy
-    success = await hass.config_entries.async_unload_platforms(entry, ["sensor", "button"])
+    success = await hass.config_entries.async_unload_platforms(entry, ["sensor", "button", "diagnostics"])
     if not success:
         return False
 

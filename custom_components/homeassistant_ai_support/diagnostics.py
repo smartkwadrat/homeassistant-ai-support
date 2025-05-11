@@ -1,13 +1,24 @@
 """Diagnostics support for AI Support integration."""
 
 from __future__ import annotations
-from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.redact import redact_data
 
-from .const import DOMAIN
+def custom_redact(data: dict, to_redact: set) -> dict:
+    """Custom function to redact sensitive data in diagnostics."""
+    if isinstance(data, dict):
+        return {
+            key: "REDACTED" if key in to_redact else custom_redact(value, to_redact)
+            for key, value in data.items()
+        }
+    elif isinstance(data, list):
+        return [custom_redact(item, to_redact) for item in data]
+    elif isinstance(data, tuple):
+        return tuple(custom_redact(item, to_redact) for item in data)
+    elif isinstance(data, set):
+        return {custom_redact(item, to_redact) for item in data}
+    return data
 
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant,
@@ -18,7 +29,7 @@ async def async_get_config_entry_diagnostics(
     basic_data = {
         "version": entry.version,
         "options": dict(entry.options),
-        "data": redact_data(dict(entry.data), to_redact={"api_key"}),
+        "data": custom_redact(dict(entry.data), {"api_key"}),
     }
     
     try:

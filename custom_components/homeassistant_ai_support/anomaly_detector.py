@@ -413,8 +413,9 @@ class AnomalyDetector:
         
         # Załaduj domyślną czułość z konfiguracji
         entry_id = next(iter(self.hass.data[DOMAIN].keys()), None)
-        if entry_id:
-            options = hass.data[DOMAIN][entry_id].get("entry", {}).options or {}
+        if entry_id and "entry" in self.hass.data[DOMAIN][entry_id]:
+            entry_data = self.hass.data[DOMAIN][entry_id].get("entry", {})
+            options = getattr(entry_data, "options", {}) if hasattr(entry_data, "options") else {}
             self.current_sensitivity = float(options.get(CONF_DEFAULT_SIGMA, DEFAULT_SIGMA))
         else:
             self.current_sensitivity = DEFAULT_SIGMA
@@ -429,7 +430,7 @@ class AnomalyDetector:
         self.priority_entities = []
         
         # Wczytaj listy encji
-        self._load_entity_lists()
+        hass.async_create_task(self._load_entity_lists())
     
     async def _load_sensitivity(self):
         """Wczytuje zapisaną czułość z magazynu."""
