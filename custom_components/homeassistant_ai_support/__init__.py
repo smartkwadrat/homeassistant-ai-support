@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from datetime import timedelta
+from datetime import timedelta, datetime
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -14,10 +14,25 @@ from homeassistant.helpers.event import async_track_time_interval
 
 from .const import (
     DOMAIN,
+    CONF_API_KEY,
+    CONF_MODEL,
+    CONF_SYSTEM_PROMPT,
+    CONF_SCAN_INTERVAL,
+    CONF_COST_OPTIMIZATION,
+    CONF_LOG_LEVELS,
+    CONF_MAX_REPORTS,
+    CONF_DIAGNOSTIC_INTEGRATION,
+    CONF_ENTITY_COUNT,
     CONF_STANDARD_CHECK_INTERVAL,
     CONF_PRIORITY_CHECK_INTERVAL,
+    CONF_ANOMALY_CHECK_INTERVAL,
+    CONF_BASELINE_REFRESH_INTERVAL,
+    CONF_LEARNING_MODE,
+    CONF_DEFAULT_SIGMA,
+    MODEL_MAPPING,
     DEFAULT_STANDARD_CHECK_INTERVAL,
     DEFAULT_PRIORITY_CHECK_INTERVAL,
+    SCAN_INTERVAL_OPTIONS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -50,12 +65,197 @@ async def update_input_select_options(hass: HomeAssistant) -> None:
             )
 
 async def options_update_listener(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
-    await hass.config_entries.async_reload(config_entry.entry_id)
+    """Obsługa zmiany opcji konfiguracji."""
+    old_data = dict(config_entry.data)
+    new_options = dict(config_entry.options)
+    
+    # Sprawdź, czy istnieją dane integracji
+    if not hass.data[DOMAIN].get(config_entry.entry_id):
+        await hass.config_entries.async_reload(config_entry.entry_id)
+        return
+    
+    data = hass.data[DOMAIN][config_entry.entry_id]
+    coordinator = data.get("coordinator")
+    ai_coordinator = data.get("ai_coordinator")
+    openai_analyzer = data.get("openai_analyzer")
+    
+    # Sprawdź, które opcje się zmieniły
+    changed_options = {k: v for k, v in new_options.items() if old_data.get(k) != v}
+    
+    # Jeśli nie ma zmian, zakończ
+    if not changed_options:
+        return
+    
+    # Lista opcji wymagających pełnego przeładowania
+    reload_required_options = [CONF_API_KEY, CONF_DIAGNOSTIC_INTEGRATION]
+    
+    # Sprawdź czy któraś z krytycznych opcji się zmieniła
+    if any(opt in changed_options for opt in reload_required_options):
+        await hass.config_entries.async_reload(config_entry.entry_id)
+        return
+    
+    # Obsłuż zmianę modelu OpenAI
+    if CONF_MODEL in changed_options and openai_analyzer:
+        try:
+            new_model = changed_options[CONF_MODEL]
+            model_key = MODEL_MAPPING[new_model]
+            await openai_analyzer.update_model(model_key)
+            # Aktualizuj dane wpisu
+            new_data = {**config_entry.data, CONF_MODEL: new_model}
+            hass.config_entries.async_update_entry(config_entry, data=new_data)
+            _LOGGER.info("Model OpenAI zaktualizowany na %s", new_model)
+        except Exception as e:
+            _LOGGER.error("Błąd aktualizacji modelu OpenAI: %s", e)
+            await hass.config_entries.async_reload(config_entry.entry_id)
+            return
+    
+    # Obsłuż zmianę promptu systemowego
+    if CONF_SYSTEM_PROMPT in changed_options and openai_analyzer:
+        try:
+            new_prompt = changed_options[CONF_SYSTEM_PROMPT]
+            await openai_analyzer.update_system_prompt(new_prompt)
+            # Aktualizuj dane wpisu
+            new_data = {**config_entry.data, CONF_SYSTEM_PROMPT: new_prompt}
+            hass.config_entries.async_update_entry(config_entry, data=new_data)
+            _LOGGER.info("Prompt systemowy zaktualizowany")
+        except Exception as e:
+            _LOGGER.error("Błąd aktualizacji promptu systemowego: %s", e)
+    
+    # Obsłuż zmianę interwału skanowania
+    if CONF_SCAN_INTERVAL in changed_options and coordinator:
+        try:
+            new_interval = changed_options[CONF_SCAN_INTERVAL]
+            interval_days = SCAN_INTERVAL_OPTIONS.get(new_interval, 7)
+            # Przelicz następny zaplanowany czas wykonania
+            if coordinator._calculate_next_run_time:
+                next_run = coordinator._calculate_next_run_time()
+                coordinator._schedule_next_update(next_run)
+            _LOGGER.info("Interwał skanowania zaktualizowany na %s", new_interval)
+        except Exception as e:
+            _LOGGER.error("Błąd aktualizacji interwału skanowania: %s", e)
+    
+    # Obsłuż zmianę optymalizacji kosztów
+    if CONF_COST_OPTIMIZATION in changed_options:
+        # Ta opcja nie wymaga żadnych natychmiastowych działań
+        _LOGGER.info("Optymalizacja kosztów zaktualizowana na %s", 
+                    "włączoną" if changed_options[CONF_COST_OPTIMIZATION] else "wyłączoną")
+    
+    # Obsłuż zmianę poziomów logów
+    if CONF_LOG_LEVELS in changed_options:
+        _LOGGER.info("Poziomy logów zaktualizowane na %s", changed_options[CONF_LOG_LEVELS])
+    
+    # Obsłuż zmianę maksymalnej liczby raportów
+    if CONF_MAX_REPORTS in changed_options and coordinator:
+        try:
+            await coordinator._cleanup_old_reports()
+            _LOGGER.info("Maksymalna liczba raportów zaktualizowana na %s", changed_options[CONF_MAX_REPORTS])
+        except Exception as e:
+            _LOGGER.error("Błąd aktualizacji maksymalnej liczby raportów: %s", e)
+    
+    # Obsłuż zmianę liczby encji
+    if CONF_ENTITY_COUNT in changed_options and ai_coordinator:
+        ai_coordinator.entity_count = int(changed_options[CONF_ENTITY_COUNT])
+        _LOGGER.info("Liczba encji zaktualizowana na %s", changed_options[CONF_ENTITY_COUNT])
+    
+    # Obsłuż zmianę interwałów sprawdzania
+    interval_options = [
+        CONF_STANDARD_CHECK_INTERVAL,
+        CONF_PRIORITY_CHECK_INTERVAL,
+        CONF_ANOMALY_CHECK_INTERVAL
+    ]
+
+    for interval_option in interval_options:
+        if interval_option in changed_options:
+            new_interval_value = changed_options[interval_option]
+            _LOGGER.info("Dynamicznie aktualizuję interwał %s na %s", interval_option, new_interval_value)
+            
+            # Anuluj istniejący callback, jeśli istnieje
+            unsub_callback = data.get(f"{interval_option}_callback")
+            if unsub_callback:
+                unsub_callback()
+            
+            # Ustal typ interwału i utwórz nowy callback
+            if interval_option == CONF_STANDARD_CHECK_INTERVAL:
+                interval = timedelta(minutes=int(new_interval_value))
+                new_unsub = async_track_time_interval(
+                    hass,
+                    lambda now: hass.async_create_task(ai_coordinator.async_check_anomalies("standard")),
+                    interval
+                )
+                data[f"{interval_option}_callback"] = new_unsub
+            
+            elif interval_option == CONF_PRIORITY_CHECK_INTERVAL:
+                interval = timedelta(minutes=int(new_interval_value))
+                new_unsub = async_track_time_interval(
+                    hass,
+                    lambda now: hass.async_create_task(ai_coordinator.async_check_anomalies("priority")),
+                    interval
+                )
+                data[f"{interval_option}_callback"] = new_unsub
+            
+            elif interval_option == CONF_ANOMALY_CHECK_INTERVAL:
+                # Jeśli masz specjalne obsługiwanie anomalii
+                # np. funkcję z innych argumentami
+                interval = timedelta(minutes=int(new_interval_value))
+                new_unsub = async_track_time_interval(
+                    hass,
+                    lambda now: hass.async_create_task(ai_coordinator.async_check_anomalies("anomaly")),
+                    interval
+                )
+                data[f"{interval_option}_callback"] = new_unsub
+            
+            # Aktualizuj dane wpisu konfiguracyjnego
+            new_data = {**config_entry.data, interval_option: new_interval_value}
+            hass.config_entries.async_update_entry(config_entry, data=new_data)  
+    
+    # Obsłuż zmianę parametrów baseline
+    if CONF_BASELINE_REFRESH_INTERVAL in changed_options and ai_coordinator:
+        try:
+            new_interval = changed_options[CONF_BASELINE_REFRESH_INTERVAL]
+            days = int(new_interval.split("_", 1)[0])
+            ai_coordinator.update_interval = timedelta(days=days)
+            _LOGGER.info("Interwał odświeżania baseline zaktualizowany na %s dni", days)
+        except Exception as e:
+            _LOGGER.error("Błąd aktualizacji interwału odświeżania baseline: %s", e)
+    
+    # Obsłuż zmianę trybu uczenia
+    if CONF_LEARNING_MODE in changed_options and ai_coordinator:
+        new_mode = changed_options[CONF_LEARNING_MODE]
+        ai_coordinator.learning_mode = new_mode
+        
+        if new_mode:
+            # Włącz tryb uczenia
+            now = datetime.now(tz=zoneinfo.ZoneInfo(hass.config.time_zone))
+            ai_coordinator._learning_end = now + timedelta(days=7)
+            hass.async_create_task(ai_coordinator.start_baseline_building())
+            ai_coordinator._learning_unsub = async_track_time_interval(
+                hass, ai_coordinator._learning_callback, ai_coordinator.update_interval
+            )
+            _LOGGER.info("Włączono tryb uczenia na 7 dni")
+        elif ai_coordinator._learning_unsub:
+            # Wyłącz tryb uczenia
+            ai_coordinator._learning_unsub()
+            ai_coordinator._learning_unsub = None
+            _LOGGER.info("Wyłączono tryb uczenia")
+    
+    # Obsłuż zmianę czułości
+    if CONF_DEFAULT_SIGMA in changed_options and ai_coordinator and hasattr(ai_coordinator, 'anomaly_detector'):
+        new_sigma = float(changed_options[CONF_DEFAULT_SIGMA])
+        ai_coordinator.anomaly_detector.current_sensitivity = new_sigma
+        await ai_coordinator.anomaly_detector._save_sensitivity()
+        _LOGGER.info("Czułość wykrywania anomalii zaktualizowana na %s", new_sigma)
+    
+    # Aktualizuj nasłuchujących, aby odzwierciedlić zmiany
+    if coordinator:
+        coordinator.async_update_listeners()
+    if ai_coordinator:
+        ai_coordinator.async_update_listeners()
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Home Assistant AI Support from a config entry."""
     try:
         from .coordinator import AIAnalyticsCoordinator, LogAnalysisCoordinator
+        from .openai_handler import OpenAIAnalyzer
         # Update dropdown helper if present
         await update_input_select_options(hass)
 
@@ -68,22 +268,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await coordinator.analyzer.async_init_client()
 
         # AI coordinator
-        ai_coordinator = AIAnalyticsCoordinator(hass, entry)
+        ai_coordinator = AIAnalyticsCoordinator(hass, entry, coordinator.analyzer)
         await ai_coordinator.async_config_entry_first_refresh()
-
+        
         # Store coordinators and entity list
         hass.data[DOMAIN][entry.entry_id] = {
             "coordinator": coordinator,
             "ai_coordinator": ai_coordinator,
+            "openai_analyzer": coordinator.analyzer,
             "entities": []
         }
+
+        # Inicjalizacja słowników przechowujących callbacki interwałów
+        for interval_option in [CONF_STANDARD_CHECK_INTERVAL, CONF_PRIORITY_CHECK_INTERVAL, CONF_ANOMALY_CHECK_INTERVAL]:
+            hass.data[DOMAIN][entry.entry_id][f"{interval_option}_callback"] = None
+
         # Rejestracja listenera zmian opcji z możliwością późniejszego usunięcia
         remove_options_listener = entry.add_update_listener(options_update_listener)
         coordinator._remove_update_listener = remove_options_listener
         entry.async_on_unload(remove_options_listener)
 
         # Forward to platforms
-        await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "button", "diagnostics"])
+        await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "button"])
 
         # Register on-demand analysis service
         async def handle_analyze_now(call):
@@ -116,13 +322,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 DEFAULT_STANDARD_CHECK_INTERVAL
             ))
         )
-        async_track_time_interval(
+
+        standard_unsub = async_track_time_interval(
             hass,
             lambda now: hass.async_create_task(
                 ai_coordinator.async_check_anomalies("standard")
             ),
             standard_interval
         )
+        hass.data[DOMAIN][entry.entry_id][f"{CONF_STANDARD_CHECK_INTERVAL}_callback"] = standard_unsub
 
         # Schedule priority checks
         priority_interval = timedelta(
@@ -131,13 +339,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 DEFAULT_PRIORITY_CHECK_INTERVAL
             ))
         )
-        async_track_time_interval(
+
+        priority_unsub = async_track_time_interval(
             hass,
             lambda now: hass.async_create_task(
                 ai_coordinator.async_check_anomalies("priority")
             ),
             priority_interval
         )
+        hass.data[DOMAIN][entry.entry_id][f"{CONF_PRIORITY_CHECK_INTERVAL}_callback"] = priority_unsub
 
         # Clean up entities daily
         async def clean_entities_periodically(now=None):
@@ -157,7 +367,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     # 1) Odładuj platformy
-    success = await hass.config_entries.async_unload_platforms(entry, ["sensor", "button", "diagnostics"])
+    success = await hass.config_entries.async_unload_platforms(entry, ["sensor", "button"])
     if not success:
         return False
 
@@ -181,5 +391,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if ai_coord and getattr(ai_coord, "_learning_unsub", None):
         ai_coord._learning_unsub()
         ai_coord._learning_unsub = None
+
+    interval_options = [
+        CONF_STANDARD_CHECK_INTERVAL,
+        CONF_PRIORITY_CHECK_INTERVAL,
+        CONF_ANOMALY_CHECK_INTERVAL
+    ]
+    
+    for interval_option in interval_options:
+        unsub_callback = data.get(f"{interval_option}_callback")
+        if unsub_callback:
+            unsub_callback()
 
     return True

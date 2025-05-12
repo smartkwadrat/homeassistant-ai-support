@@ -15,6 +15,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.helpers.event import async_track_point_in_time, async_track_time_interval
 from homeassistant.helpers.storage import Store
 from typing import Any
+from .openai_handler import OpenAIAnalyzer
 
 from .const import (
     DOMAIN,
@@ -43,7 +44,7 @@ _LOGGER = logging.getLogger(__name__)
 class AIAnalyticsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinator for AI-driven tasks: entity discovery and baseline building with learning mode."""
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, openai_analyzer: OpenAIAnalyzer) -> None:
         from .anomaly_detector import AnomalyDetector, EntityManager
         # Read user options
         opts = entry.options
@@ -67,6 +68,7 @@ class AIAnalyticsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
         self.entry = entry
+        self.openai_handler = openai_analyzer
 
         # Entity discovery status container
         self.entity_discovery_status: dict[str, Any] = {
@@ -201,24 +203,21 @@ class AIAnalyticsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 entity_count=self.entity_count,
             )
             if not success:
-                raise RuntimeError("Nieprawidłowa odpowiedź AI")
+                self.entity_discovery_status.update({
+                    "status": "error",
+                    "status_description": "Nie udało się wykryć i/lub zapisać encji. Sprawdź logi Home Assistanta po więcej szczegółów.",
+                    "error": "Proces wykrywania encji zakończony niepowodzeniem.",
+                    # Zachowaj ostatni znany postęp, jeśli był częściowy, lub zresetuj
+                    "progress": self.entity_discovery_status.get("progress", 30),
+                })
+                return
 
-            # 3) Analyzing (handled inside discover_entities)
-            self.entity_discovery_status.update({
-                "status": "analyzing",
-                "status_description": "Analiza encji przez AI",
-                "progress": 60,
-            })
-            self.async_update_listeners()
-
-            # 4) Saving
             self.entity_discovery_status.update({
                 "status": "saving",
-                "status_description": "Zapisywanie wykrytych encji",
+                "status_description": "Przetwarzanie i zapisywanie zakończone",
                 "progress": 90,
             })
             self.async_update_listeners()
-            await self.entity_manager.save()
 
             # 5) Success
             self.entity_discovery_status.update({
@@ -226,16 +225,19 @@ class AIAnalyticsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "status_description": "Wykrywanie encji zakończone powodzeniem",
                 "progress": 100,
             })
-            self.async_update_listeners()
-
+            
         except Exception as err:
-            _LOGGER.error("Błąd podczas wykrywania encji: %s", err)
+            # Ten blok `except` złapie tylko nieoczekiwane błędy,
+            # które mogłyby wystąpić bezpośrednio w logice koordynatora,
+            # a nie te obsłużone w discover_entities.
+            _LOGGER.error("Nieoczekiwany błąd podczas koordynacji wykrywania encji: %s", err, exc_info=True)
             self.entity_discovery_status.update({
                 "status": "error",
-                "status_description": f"Błąd podczas wykrywania encji: {err}",
+                "status_description": f"Krytyczny błąd systemowy podczas wykrywania encji: {err}",
                 "error": str(err),
                 "progress": 0,
             })
+        finally:
             self.async_update_listeners()
 
     async def async_check_anomalies(self, *args):

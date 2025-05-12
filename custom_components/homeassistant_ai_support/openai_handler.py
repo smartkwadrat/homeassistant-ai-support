@@ -26,6 +26,18 @@ class OpenAIAnalyzer:
         self._openai = None
         self.client = None
 
+    async def update_model(self, new_model: str):
+        """Aktualizuje model bez tworzenia nowego klienta."""
+        _LOGGER.info("Aktualizacja modelu OpenAI z %s na %s", self.model, new_model)
+        self.model = new_model
+        return True
+
+    async def update_system_prompt(self, new_prompt: str):
+        """Aktualizuje prompt systemowy bez tworzenia nowego klienta."""
+        _LOGGER.info("Aktualizacja promptu systemowego")
+        self.system_prompt = new_prompt
+        return True
+
     async def _load_openai_module(self):
         """Leniwe zaimportowanie modułu openai w executorze."""
         if self._openai is None:

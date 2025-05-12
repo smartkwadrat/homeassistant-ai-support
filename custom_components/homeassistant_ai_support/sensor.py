@@ -16,6 +16,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.core import Event, EventStateChangedData, callback
 from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import DOMAIN
 
@@ -48,7 +49,7 @@ def translate_status_label(status_key: str, hass):
     lang = get_lang(hass)
     return STATUS_LABELS.get(status_key, {}).get(lang, status_key)
 
-class LogAnalysisSensor(CoordinatorEntity, SensorEntity):
+class LogAnalysisSensor(CoordinatorEntity, SensorEntity, RestoreEntity):
     """Reprezentacja czujnika statusu analizy logów."""
 
     _attr_icon = "mdi:clipboard-text-search"
@@ -130,6 +131,24 @@ class LogAnalysisSensor(CoordinatorEntity, SensorEntity):
                 except Exception as e:
                     _LOGGER.error(f"Błąd odczytu raportu: {e}")
                     self._latest_report = {}
+                    
+    async def async_added_to_hass(self):
+        """Uruchamiane gdy encja jest dodawana do hass."""
+        await super().async_added_to_hass()
+        
+        # Przywróć stan, jeśli istnieje
+        last_state = await self.async_get_last_state()
+        if last_state:
+            # Przywróć atrybuty, jeśli istnieją
+            if last_state.attributes.get("last_run"):
+                if not self.coordinator.data.get("last_run"):
+                    self.coordinator.data["last_run"] = last_state.attributes.get("last_run")
+            if last_state.attributes.get("next_scheduled_run"):
+                if not self.coordinator.data.get("next_scheduled_run"):
+                    self.coordinator.data["next_scheduled_run"] = last_state.attributes.get("next_scheduled_run")
+            if last_state.attributes.get("status"):
+                if self.coordinator.data.get("status") == "waiting":
+                    self.coordinator.data["status"] = last_state.attributes.get("status")
 
 class LastReportTimeSensor(CoordinatorEntity, SensorEntity):
     """Reprezentacja czujnika czasu ostatniego raportu."""

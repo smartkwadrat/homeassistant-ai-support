@@ -11,6 +11,7 @@ from homeassistant.components.button import ButtonEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import DOMAIN
 
@@ -45,7 +46,7 @@ def translate_status(status_key: str, hass, retry_num: int = None, max_attempts:
             return f"Retrying ({retry_num}/{max_attempts})"
     return txt or status_key
 
-class GenerateReportButton(CoordinatorEntity, ButtonEntity):
+class GenerateReportButton(CoordinatorEntity, ButtonEntity, RestoreEntity):
     """Przycisk do natychmiastowego generowania raportu."""
     _attr_icon = "mdi:clipboard-text-play"
     _attr_unique_id = "homeassistant_ai_support_generate_report"
@@ -133,6 +134,15 @@ class GenerateReportButton(CoordinatorEntity, ButtonEntity):
                 self.coordinator.data["status"] = "error"
                 self.coordinator.data["status_description"] = translate_status("error", hass)
                 self.coordinator.async_update_listeners()
+    
+    async def async_added_to_hass(self):
+        """Uruchamiane gdy encja jest dodawana do hass."""
+        await super().async_added_to_hass()
+        
+        # Przywróć stan, jeśli istnieje
+        last_state = await self.async_get_last_state()
+        if last_state and last_state.attributes.get("last_triggered"):
+            self._last_triggered = last_state.attributes.get("last_triggered")
 
 class DiscoverEntitiesButton(CoordinatorEntity, ButtonEntity):
     _attr_icon = "mdi:magnify"

@@ -103,20 +103,47 @@ class EntityManager:
     async def _save_to_file(self) -> None:
         """Zapisuje aktualne encje do pliku JSON w katalogu ai_selected_entities."""
         try:
-            # Utwórz katalog, jeśli nie istnieje
-            await self.hass.async_add_executor_job(self.entities_dir.mkdir, True, True)
+            # Sprawdź, czy ścieżka docelowa dla katalogu nie istnieje jako plik
+            if await self.hass.async_add_executor_job(self.entities_dir.is_file):
+                _LOGGER.error(
+                    f"Ścieżka docelowa dla katalogu encji '{self.entities_dir}' istnieje jako plik. "
+                    f"Proszę ręcznie usunąć ten plik lub zmienić jego nazwę, aby integracja mogła utworzyć katalog."
+                )
+                # Rzuć wyjątek, aby proces został przerwany i błąd był widoczny
+                raise FileExistsError(
+                    f"Nie można utworzyć katalogu {self.entities_dir}, ponieważ plik o tej nazwie już istnieje."
+                )
+
+            # Utwórz katalog, jeśli nie istnieje - poprawione wywołanie mkdir
+            # Używamy nazwanych argumentów parents=True, exist_ok=True
+            await self.hass.async_add_executor_job(
+                lambda: self.entities_dir.mkdir(parents=True, exist_ok=True)
+            )
 
             # Zapis do pliku
             await self._write_json_file()
             _LOGGER.info("Zapisano wykryte encje do pliku: %s", self.entities_file)
+
         except Exception as e:
-            _LOGGER.error("Błąd podczas zapisywania pliku JSON encji: %s", e)
+            _LOGGER.error("Błąd podczas zapisywania pliku JSON encji (%s): %s", self.entities_file, e)
+            raise
 
     async def _write_json_file(self) -> None:
-        """Funkcja asynchroniczna zapisująca JSON na dysku."""
+        """Zapisuje dane encji do pliku JSON."""
         import aiofiles
         async with aiofiles.open(self.entities_file, 'w', encoding='utf-8') as f:
             await f.write(json.dumps(self.monitored_entities, ensure_ascii=False, indent=2))
+            
+    async def save(self) -> None:
+        """Zapisuje listę encji do .storage i do pliku JSON."""
+        try:
+            await self.store.async_save(self.monitored_entities)
+            await self._save_to_file()
+        except Exception as e:
+            # Logujemy błąd, ale również rzucamy go dalej,
+            # aby metoda discover_entities mogła go złapać
+            _LOGGER.error("Nie udało się zapisać encji (błąd w EntityManager.save): %s", e)
+            raise
 
     async def discover_entities(self, analyzer, entity_count: int = 20) -> bool:
         """Odkrywa kluczowe encje przy pomocy AI, zapisuje wynik i zwraca status."""
@@ -141,8 +168,7 @@ class EntityManager:
         prompt = (
             f"Oto lista wszystkich encji w moim systemie Home Assistant. "
             f"Wybierz maksymalnie {entity_count} najważniejszych encji, które warto monitorować pod kątem anomalii. "
-            f"Skup się na czujnikach bezpieczeństwa, kluczowych systemach i takich, których anomalie "
-            f"mogłyby wskazywać na problemy. Podziel wyniki na dwie kategorie: "
+            f"Skup się na czujnikach temperatury, czujnikach otwarcia drzwi/okien/bram, czujnikach ruchu czy światłach"
             f"1. Standardowe - encje, które można sprawdzać rzadziej "
             f"2. Priorytetowe - encje kluczowe dla bezpieczeństwa i funkcjonowania, wymagające częstszego sprawdzania "
             f"Podaj wynik jako JSON w formacie: {{'standard': ['entity_id1', 'entity_id2', ...], 'priority': ['entity_id3', ...]}}"
@@ -158,7 +184,6 @@ class EntityManager:
             _LOGGER.error("Błąd przy wywołaniu AI: %s", err)
             return False
 
-        # 4) Parsuj odpowiedź i aktualizuj
         try:
             result = json.loads(response)
             if isinstance(result, dict) and "standard" in result and "priority" in result:
@@ -167,15 +192,18 @@ class EntityManager:
                 self.monitored_entities["gpt_selected"]["standard"] = standard
                 self.monitored_entities["gpt_selected"]["priority"] = priority
 
-                # 5) Zapisz zmiany
+                # Zapisz zmiany - self.save() może teraz rzucić wyjątek, który zostanie tu złapany
                 await self.save()
                 return True
+            else:
+                _LOGGER.error("Nieprawidłowa struktura JSON otrzymana od AI: %s", response)
+                return False
         except json.JSONDecodeError as err:
-            _LOGGER.error("Nieprawidłowy JSON od AI: %s", err)
-        except Exception as err:
-            _LOGGER.error("Błąd podczas przetwarzania odpowiedzi AI: %s", err)
-
-        return False
+            _LOGGER.error("Nieprawidłowy JSON od AI: %s (otrzymana odpowiedź: %s)", err, response)
+            return False
+        except Exception as err: # Ten blok złapie błędy z self.save() lub inne
+            _LOGGER.error("Błąd podczas przetwarzania odpowiedzi AI lub zapisywania encji: %s", err)
+            return False
     
     async def clean_nonexistent_entities(self) -> None:
         """Usuwa nieistniejące encje z listy monitorowanych."""
