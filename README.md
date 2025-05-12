@@ -21,16 +21,16 @@ This custom integration for Home Assistant leverages AI models, such as OpenAI's
 
 ## Installation
 
-### Via HACS (NOT IMPLEMENTED YET)
+### Via HACS (Recommended)
 
 1. Install HACS (Home Assistant Community Store) if you haven't already.
-2. In HACS, go to **Integrations** and click the `+` button.
-3. Search for `Home Assistant AI Support`.
-4. Select the integration and click **Download**.
+2. In Home Assistant Community Store click the `...` button on the top-right correnr.
+3. Add custom repository URL: https://github.com/smartkwadrat/homeassistant-ai-support
+4. Search for Home Assistant AI Suppor and click **Download**.
 5. Restart Home Assistant.
 6. Go to **Settings** → **Devices & Services** → **+ Add Integration** and search for `Home Assistant AI Support`.
 
-### Manual Installation (Recommended)
+### Manual Installation
 
 1. Download the contents of this repository.
 2. Copy the `custom_components/homeassistant_ai_support` folder to your Home Assistant's `custom_components` directory:
