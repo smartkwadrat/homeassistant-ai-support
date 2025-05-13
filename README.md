@@ -26,7 +26,7 @@ This custom integration for Home Assistant leverages AI models, such as OpenAI's
 1. Install HACS (Home Assistant Community Store) if you haven't already.
 2. In Home Assistant Community Store click the `...` button on the top-right correnr.
 3. Add custom repository URL: https://github.com/smartkwadrat/homeassistant-ai-support
-4. Search for Home Assistant AI Suppor and click **Download**.
+4. Search for Home Assistant AI Support and click **Download**.
 5. Restart Home Assistant.
 6. Go to **Settings** → **Devices & Services** → **+ Add Integration** and search for `Home Assistant AI Support`.
 
@@ -49,40 +49,22 @@ This custom integration for Home Assistant leverages AI models, such as OpenAI's
 1. Add the integration via the Home Assistant UI: **Settings** → **Devices & Services** → **+ Add Integration** → `Home Assistant AI Support`.
 2. Follow the setup wizard:
 - **API Key**: Enter your OpenAI API key.
-- **Model**: Select the AI model (e.g., GPT-4.1 mini).
+- **Model**: Select the AI model
 - **System Prompt**: Customize the AI prompt for log analysis (optional).
 - **Scan Interval**: Set the frequency for log analysis (daily, every 2 days, weekly, monthly).
 - **Additional Options**: Configure anomaly detection intervals, sensitivity, learning mode, and more.
-3. Adjust settings later via **Integration Options** in **Settings** → **Devices & Services**.
 
 ## Usage
 
 ### Dashboard Cards for Reports
 
-**Displaying the Latest Report (English):**
-```yaml
-type: markdown
-title: Latest AI Report
-content: |
-Date: {{ state_attr('sensor.ai_support_status_analizy_logow', 'timestamp') }}
-{{ state_attr('sensor.ai_support_status_analizy_logow', 'report') }}
-```
-
-**Displaying the Latest Report (Polish):**
-```yaml
-type: markdown
-title: Ostatni raport AI
-content: |
-Data: {{ state_attr('sensor.ai_support_status_analizy_logow', 'timestamp') }}
-{{ state_attr('sensor.ai_support_status_analizy_logow', 'report') }}
-```
+#### :warning: :warning: You have to manually create helper input_select with name ai_support_report_file :warning: :warning:
 
 **Selecting and Displaying a Specific Report (English):**
 ```yaml
 type: entities
 entities:
-
-entity: input_select.ai_support_report_file
+  - entity: input_select.ai_support_report_file
 title: Select Report
 ```
 
@@ -98,8 +80,7 @@ Date: {{ state_attr('sensor.ai_support_selected_report', 'timestamp') }}
 ```yaml
 type: entities
 entities:
-
-entity: input_select.ai_support_report_file
+  - entity: input_select.ai_support_report_file
 title: Wybierz raport
 ```
 
